@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_engine, get_session
 from app.main import app
-from app.models import Celda, Cliente, Estancia, Operador, Vehiculo
+from app.models import Celda, Cliente, Estancia, Novedad, Operador, Vehiculo
 from app.services.mensualidad import hoy_colombia
 
 pytestmark = pytest.mark.skipif(os.getenv('RUN_POSTGRES_TESTS') != '1', reason='Requiere PostgreSQL local.')
@@ -39,7 +39,7 @@ def datos():
     engine = get_engine()
     with engine.connect() as c:
         assert c.scalar(text('SELECT current_database()')) == 'autos_colombia'
-        assert c.scalar(text('SELECT version_num FROM alembic_version')) == '0005'
+        assert c.scalar(text('SELECT version_num FROM alembic_version')) == '0006'
     hoy = hoy_colombia()
     with Session(engine) as s, s.begin():
         cliente = Cliente(tipo_documento='CC', numero_documento=documento(), nombres='Laura', apellidos='Prueba',
@@ -68,6 +68,8 @@ def datos():
     finally:
         ids = list(data['id'].values())
         with Session(engine) as s, s.begin():
+            estancias = select(Estancia.id).where(Estancia.vehiculo_id.in_(ids))
+            s.execute(delete(Novedad).where(Novedad.estancia_id.in_(estancias)))
             s.execute(delete(Estancia).where(Estancia.vehiculo_id.in_(ids)))
             s.execute(delete(Vehiculo).where(Vehiculo.id.in_(ids)))
             s.execute(delete(Cliente).where(Cliente.id == data['cliente']))
@@ -133,11 +135,12 @@ def test_recorrido_entrada_recibo_y_salida(datos):
         assert client.get('/estancias/recibo/E-999999999').status_code == 404
 
         # Salida por placa: cierra con operador y puerta, y la celda vuelve a estar libre.
-        salida = client.post('/estancias/salida', json={'placa': d['placa']['carro'], 'operador_id': d['o'][1]})
+        salida = client.post('/estancias/salida', json={'placa': d['placa']['carro'], 'operador_id': d['o'][1], 'puerta_id': 1})
         assert salida.status_code == 200
         body = salida.json()
         assert not body['abierta'] and body['operador_salida']['id'] == d['o'][1]
-        sin_ingreso = client.post('/estancias/salida', json={'placa': d['placa']['carro'], 'operador_id': d['o'][0]})
+        assert body['puerta_salida']['id'] == 1
+        sin_ingreso = client.post('/estancias/salida', json={'placa': d['placa']['carro'], 'operador_id': d['o'][0], 'puerta_id': 1})
         assert sin_ingreso.status_code == 409 and 'no tiene un ingreso abierto' in sin_ingreso.json()['detail']
         assert client.get('/estancias/vehiculo/' + d['placa']['carro']).json()['puede_ingresar']
         assert abiertas(d) == 2
@@ -174,12 +177,14 @@ def test_cupo_lleno_por_tipo(datos):
                         assert lleno.json()['detail'].startswith('No hay celdas disponibles para motos (')
                         # Un carro sí entra: los cupos son independientes por tipo.
                         assert client.post('/estancias/entrada', json=entrada(d, 'carro')).status_code == 201
+                        # Una moto que ocupe una celda de moto: al salir libera el cupo de motos.
                         moto_adentro = session.scalars(select(Vehiculo.placa).join(
-                            Estancia, Estancia.vehiculo_id == Vehiculo.id).where(
-                            Vehiculo.tipo == 'MOTO', Estancia.salida.is_(None))).first()
+                            Estancia, Estancia.vehiculo_id == Vehiculo.id).join(
+                            Celda, Celda.id == Estancia.celda_id).where(
+                            Celda.tipo == 'MOTO', Estancia.salida.is_(None))).first()
                         session.commit()  # cierra la lectura para que el servicio abra su propia transacción
                         assert client.post('/estancias/salida', json={'placa': moto_adentro,
-                                                                      'operador_id': d['o'][0]}).status_code == 200
+                                                                      'operador_id': d['o'][0], 'puerta_id': 1}).status_code == 200
                         assert client.post('/estancias/entrada', json=entrada(d, 'moto')).status_code == 201
                 finally:
                     app.dependency_overrides.pop(get_session, None)
@@ -194,7 +199,7 @@ def test_concurrencia_entre_puertas(datos, caso):
         with TestClient(app) as client:
             assert client.post('/estancias/entrada', json=entrada(d)).status_code == 201
         path = '/estancias/salida'
-        payloads = [{'placa': d['placa']['carro'], 'operador_id': o} for o in d['o']]
+        payloads = [{'placa': d['placa']['carro'], 'operador_id': o, 'puerta_id': 1} for o in d['o']]
     else:
         path = '/estancias/entrada'
         segundo = 'camioneta' if caso == 'dos_vehiculos' else 'carro'

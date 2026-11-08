@@ -1,4 +1,4 @@
-"""Consulta con validación de mensualidad, entrada con asignación automática de celda y recibo (RF-03 a RF-05).
+"""Consulta, entrada con celda automática y recibo (RF-03 a RF-05), salida (RF-07) y cambio de celda (RF-09).
 
 Concurrencia (RNF-01): la asignación bloquea la fila de la celda con FOR UPDATE SKIP LOCKED, de modo
 que dos puertas que confirman a la vez reciben celdas distintas. Las restricciones de la base
@@ -7,15 +7,16 @@ que dos puertas que confirman a la vez reciben celdas distintas. Las restriccion
 from datetime import datetime, timezone
 from functools import wraps
 
-from sqlalchemy import exists, func, select
+from sqlalchemy import exists, func, select, text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, selectinload
 
-from app.models import TIPOS_CELDA, Celda, Estancia, Operador, Puerta, Vehiculo, tipo_celda_para
+from app.models import TIPOS_CELDA, Celda, Estancia, Novedad, Operador, Puerta, Vehiculo, tipo_celda_para
 from app.schemas.celda import CeldaRespuesta
 from app.schemas.cliente import ClienteRespuesta
 from app.schemas.estancia import (
-    ConsultaVehiculo, Cupo, EntradaCrear, MovimientoRespuesta, OperadorResumen, PuertaRespuesta, SalidaCrear,
+    CambioCeldaCrear, CambioCeldaRespuesta, ConsultaVehiculo, Cupo, EntradaCrear, MovimientoRespuesta,
+    NovedadRespuesta, OperadorResumen, PuertaRespuesta, SalidaCrear,
 )
 from app.schemas.vehiculo import VehiculoRespuesta
 from app.services.mensualidad import evaluar_mensualidad, hoy_colombia
@@ -42,7 +43,7 @@ def transaccion(operation):
             constraint = getattr(getattr(error.orig, "diag", None), "constraint_name", None)
             if code == "23505" and constraint == "uq_estancia_vehiculo_abierta":
                 raise EstanciaError(409, "El vehículo ya está dentro.") from None
-            if code == "23505" and constraint == "uq_estancia_celda_abierta":
+            if code in {"23505", "23P01"} and constraint in {"uq_estancia_celda_abierta", "ex_estancia_celda_abierta"}:
                 raise EstanciaError(409, "La celda está ocupada. Intenta de nuevo.") from None
             if code == "23503":
                 raise EstanciaError(404, "Una de las referencias ya no existe. Actualiza los datos.") from None
@@ -67,6 +68,20 @@ def _detalle_query():
         joinedload(Estancia.celda),
         joinedload(Estancia.puerta_entrada), joinedload(Estancia.puerta_salida),
         joinedload(Estancia.operador_entrada), joinedload(Estancia.operador_salida),
+        selectinload(Estancia.novedades).options(
+            joinedload(Novedad.celda_anterior), joinedload(Novedad.celda_nueva), joinedload(Novedad.operador),
+        ),
+    )
+
+
+def novedad(registro: Novedad) -> NovedadRespuesta:
+    return NovedadRespuesta(
+        id=registro.id,
+        celda_anterior=CeldaRespuesta.model_validate(registro.celda_anterior),
+        celda_nueva=CeldaRespuesta.model_validate(registro.celda_nueva),
+        motivo=registro.motivo,
+        operador=OperadorResumen.model_validate(registro.operador),
+        fecha=registro.fecha,
     )
 
 
@@ -92,6 +107,8 @@ def movimiento(estancia: Estancia) -> MovimientoRespuesta:
         operador_entrada=OperadorResumen.model_validate(estancia.operador_entrada),
         operador_salida=(OperadorResumen.model_validate(estancia.operador_salida)
                          if estancia.operador_salida else None),
+        cliente_documento=f"{cliente.tipo_documento} {cliente.numero_documento}" if cliente else None,
+        novedades=[novedad(n) for n in estancia.novedades],
     )
 
 
@@ -214,26 +231,110 @@ class ServicioEstancia:
         self.session.flush()
         return self._detalle(estancia.id)
 
-    # ---------- Salida por placa, como antes (sus mejoras son parte de RF-07) ----------
+    # ---------- RF-07 ----------
+
+    def _abierta_para(self, placa: str | None, numero_recibo: str | None, bloquear: bool = False) -> Estancia:
+        """Ingreso abierto buscado por placa, por recibo o por ambos (que deben coincidir)."""
+        vehiculo = None
+        if placa is not None:
+            vehiculo = self.session.scalar(select(Vehiculo).where(Vehiculo.placa == placa))
+            if vehiculo is None:
+                raise EstanciaError(404, "Vehículo no registrado.")
+        if numero_recibo is not None:
+            consulta = select(Estancia).where(Estancia.numero_recibo == numero_recibo)
+            estancia = self.session.scalar(consulta.with_for_update() if bloquear else consulta)
+            if estancia is None:
+                raise EstanciaError(404, f"No existe el recibo {numero_recibo}.")
+            if vehiculo is not None and estancia.vehiculo_id != vehiculo.id:
+                raise EstanciaError(
+                    409, f"El recibo {numero_recibo} no corresponde a la placa {placa}. Verifica el recibo."
+                )
+            if not estancia.esta_abierta():
+                raise EstanciaError(
+                    409, f"Este vehículo no tiene un ingreso abierto: el recibo {numero_recibo} ya tiene salida."
+                )
+            return estancia
+        # PostgreSQL vuelve a evaluar salida IS NULL tras esperar el bloqueo.
+        consulta = select(Estancia).where(Estancia.vehiculo_id == vehiculo.id, _abierta())
+        estancia = self.session.scalar(consulta.with_for_update() if bloquear else consulta)
+        if estancia is None:
+            raise EstanciaError(409, "Este vehículo no tiene un ingreso abierto.")
+        return estancia
+
+    @transaccion
+    def abierta(self, placa: str | None, numero_recibo: str | None) -> MovimientoRespuesta:
+        if placa is None and numero_recibo is None:
+            raise EstanciaError(422, "Digita la placa o el número del recibo.")
+        return self._detalle(self._abierta_para(placa, numero_recibo).id)
 
     @transaccion
     def salida(self, data: SalidaCrear) -> MovimientoRespuesta:
-        vehiculo = self.session.scalar(select(Vehiculo).where(Vehiculo.placa == data.placa))
-        if vehiculo is None:
-            raise EstanciaError(404, "Vehículo no registrado.")
-        # PostgreSQL vuelve a evaluar salida IS NULL tras esperar el bloqueo.
-        estancia = self.session.scalar(
-            select(Estancia).where(Estancia.vehiculo_id == vehiculo.id, _abierta()).with_for_update()
-        )
-        if estancia is None:
-            raise EstanciaError(409, "Este vehículo no tiene un ingreso abierto.")
+        estancia = self._abierta_para(data.placa, data.numero_recibo, bloquear=True)
         operador = self._operador(data.operador_id)
+        puerta = self._puerta(data.puerta_id)
         try:
-            estancia.cerrar(datetime.now(timezone.utc), operador)
+            estancia.cerrar(datetime.now(timezone.utc), operador, puerta)
         except ValueError:
             raise EstanciaError(409, "No se puede cerrar la estancia con su estado o fecha actuales.") from None
         self.session.flush()
         return self._detalle(estancia.id)
+
+    # ---------- RF-09 ----------
+
+    @transaccion
+    def cambiar_celda(self, estancia_id: int, data: CambioCeldaCrear) -> CambioCeldaRespuesta:
+        operador = self._operador(data.operador_id)
+        estancia = self.session.scalar(select(Estancia).where(Estancia.id == estancia_id).with_for_update())
+        if estancia is None:
+            raise EstanciaError(404, "Registro de ingreso no encontrado.")
+        if not estancia.esta_abierta():
+            raise EstanciaError(409, "Solo se puede cambiar la celda de un ingreso abierto.")
+        if data.celda_id == estancia.celda_id:
+            raise EstanciaError(409, "El vehículo ya está registrado en esa celda. Elige otra.")
+        # Bloquear ambas celdas en orden de id evita interbloqueos con la otra puerta.
+        celdas = {c.id: c for c in self.session.scalars(
+            select(Celda).where(Celda.id.in_([estancia.celda_id, data.celda_id]))
+            .order_by(Celda.id).with_for_update()
+        )}
+        nueva = celdas.get(data.celda_id)
+        if nueva is None:
+            raise EstanciaError(404, "Celda no encontrada.")
+        anterior = celdas[estancia.celda_id]
+        vehiculo = self.session.get(Vehiculo, estancia.vehiculo_id)
+        requerido = tipo_celda_para(vehiculo.tipo)
+        if nueva.tipo != requerido:
+            raise EstanciaError(
+                409, f"La celda {nueva.codigo} es para {NOMBRE_CUPO[nueva.tipo]}; "
+                     f"{vehiculo.placa} necesita una celda para {NOMBRE_CUPO[requerido]}."
+            )
+        otra = self.session.scalar(
+            select(Estancia).where(Estancia.celda_id == nueva.id, _abierta()).with_for_update()
+        )
+        if otra is None:
+            estancia.celda_id = nueva.id
+            self.session.add(Novedad(estancia_id=estancia.id, celda_anterior_id=anterior.id,
+                                     celda_nueva_id=nueva.id, motivo=data.motivo, operador_id=operador.id))
+        else:
+            placa_otra = self.session.get(Vehiculo, otra.vehiculo_id).placa
+            if not data.intercambiar:
+                raise EstanciaError(
+                    409, f"La celda {nueva.codigo} está ocupada por {placa_otra}. Si ese vehículo está en "
+                         f"realidad en la celda {anterior.codigo}, elige «Intercambiar celdas»."
+                )
+            # Los dos registros se mueven a la vez; la regla de una estancia por celda se verifica al confirmar.
+            self.session.execute(text("SET CONSTRAINTS ex_estancia_celda_abierta DEFERRED"))
+            estancia.celda_id, otra.celda_id = nueva.id, anterior.id
+            self.session.add_all([
+                Novedad(estancia_id=estancia.id, celda_anterior_id=anterior.id, celda_nueva_id=nueva.id,
+                        motivo=f"{data.motivo} (intercambio con {placa_otra})", operador_id=operador.id),
+                Novedad(estancia_id=otra.id, celda_anterior_id=nueva.id, celda_nueva_id=anterior.id,
+                        motivo=f"{data.motivo} (intercambio con {vehiculo.placa})", operador_id=operador.id),
+            ])
+        self.session.flush()
+        return CambioCeldaRespuesta(
+            estancia=self._detalle(estancia.id),
+            intercambio=self._detalle(otra.id) if otra is not None else None,
+        )
 
     @transaccion
     def recibo(self, numero_recibo: str) -> MovimientoRespuesta:

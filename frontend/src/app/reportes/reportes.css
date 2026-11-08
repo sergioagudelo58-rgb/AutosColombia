@@ -1,0 +1,59 @@
+.tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid #dce2dc;
+}
+.ui .tabs button {
+  border: none;
+  border-bottom: 3px solid transparent;
+  border-radius: 0;
+  background: none;
+  padding: 10px 14px;
+  font-weight: 600;
+  color: #5d7063;
+}
+.ui .tabs button[aria-selected='true'] {
+  color: #203a33;
+  border-bottom-color: #214c43;
+}
+.filtros {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  align-items: flex-end;
+  margin-bottom: 16px;
+}
+.filtros .field {
+  min-width: 160px;
+  flex: 1;
+}
+.filtros .actions {
+  margin: 0;
+}
+.encabezado {
+  margin: 4px 0 14px;
+}
+.tablas h3 {
+  margin-bottom: 8px;
+}
+.novedad {
+  margin: 6px 0 0;
+  font-size: 12px;
+}
+.novedad .muted {
+  display: block;
+  font-size: 11px;
+}
+.paginacion {
+  justify-content: flex-end;
+  align-items: center;
+  margin-top: 14px;
+}
+@media print {
+  .reporte .panel,
+  .reporte .kpi {
+    break-inside: avoid;
+    border-color: #999;
+  }
+}
