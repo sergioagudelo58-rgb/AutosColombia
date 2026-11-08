@@ -339,3 +339,12 @@ a:focus-visible {
     background: #fff;
   }
 }
+
+/* Exportar PDF (RF-10): al imprimir solo queda el contenido del reporte. */
+@media print {
+  .site-header,
+  .page-shell > footer,
+  .no-print {
+    display: none !important;
+  }
+}

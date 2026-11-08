@@ -12,6 +12,8 @@ from app.services.estancia import EstanciaError
 from app.routers.clientes import router as clientes_router
 from app.services.cliente import ClienteError
 from app.routers.puertas import router as puertas_router
+from app.routers.panel import router as panel_router
+from app.routers.reportes import router as reportes_router
 
 app = FastAPI(title="Autos Colombia API")
 app.include_router(vehiculos_router)
@@ -20,6 +22,8 @@ app.include_router(operadores_router)
 app.include_router(estancias_router)
 app.include_router(clientes_router)
 app.include_router(puertas_router)
+app.include_router(panel_router)
+app.include_router(reportes_router)
 
 
 @app.exception_handler(VehiculoError)

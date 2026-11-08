@@ -10,5 +10,8 @@
   "/celdas": { "target": "http://127.0.0.1:8000" },
   "/celdas/**": { "target": "http://127.0.0.1:8000" },
   "/vehiculos": { "target": "http://127.0.0.1:8000" },
-  "/vehiculos/**": { "target": "http://127.0.0.1:8000" }
+  "/vehiculos/**": { "target": "http://127.0.0.1:8000" },
+  "/panel": { "target": "http://127.0.0.1:8000" },
+  "/reportes": { "target": "http://127.0.0.1:8000" },
+  "/reportes/**": { "target": "http://127.0.0.1:8000" }
 }

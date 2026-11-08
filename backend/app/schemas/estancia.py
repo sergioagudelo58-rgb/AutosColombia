@@ -2,7 +2,7 @@ import re
 from datetime import datetime, timezone
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, field_validator
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, StringConstraints, field_validator, model_validator
 
 from app.models import required_text
 from app.schemas.celda import CeldaRespuesta
@@ -39,10 +39,34 @@ class EntradaCrear(BaseModel):
 
 
 class SalidaCrear(BaseModel):
-    """Salida por placa, sin cambios de contrato (la búsqueda por recibo y la puerta son de RF-07)."""
+    """RF-07: salida por placa o por número de recibo; con ambos, el servidor verifica que coincidan."""
     model_config = ConfigDict(extra="forbid")
-    placa: Placa
+    placa: Placa | None = None
+    numero_recibo: Recibo | None = None
     operador_id: Identificador
+    puerta_id: IdPuerta
+
+    @model_validator(mode="after")
+    def placa_o_recibo(self) -> "SalidaCrear":
+        if self.placa is None and self.numero_recibo is None:
+            raise ValueError("Digita la placa o el número del recibo.")
+        return self
+
+
+Motivo = Annotated[
+    str,
+    BeforeValidator(lambda value: required_text(value, "El motivo")),
+    StringConstraints(max_length=300),
+]
+
+
+class CambioCeldaCrear(BaseModel):
+    """RF-09: el operario elige la celda nueva y escribe el motivo; intercambiar solo si está ocupada."""
+    model_config = ConfigDict(extra="forbid")
+    celda_id: Identificador
+    motivo: Motivo
+    operador_id: Identificador
+    intercambiar: bool = False
 
 
 class PuertaRespuesta(BaseModel):
@@ -57,8 +81,20 @@ class OperadorResumen(BaseModel):
     nombre: str
 
 
+class NovedadRespuesta(BaseModel):
+    """Cambio de celda con su trazabilidad (RF-09, RNF-07)."""
+    id: int
+    celda_anterior: CeldaRespuesta
+    celda_nueva: CeldaRespuesta
+    motivo: str
+    operador: OperadorResumen
+    fecha: datetime
+
+    _utc = field_validator("fecha")(utc)
+
+
 class MovimientoRespuesta(BaseModel):
-    """Estancia con los datos que necesita el recibo de ingreso (RF-05)."""
+    """Estancia con los datos del recibo de ingreso (RF-05) y sus novedades (RF-09)."""
     id: int
     numero_recibo: str
     vehiculo_id: int
@@ -76,8 +112,15 @@ class MovimientoRespuesta(BaseModel):
     puerta_salida: PuertaRespuesta | None
     operador_entrada: OperadorResumen
     operador_salida: OperadorResumen | None
+    cliente_documento: str | None = None
+    novedades: list[NovedadRespuesta] = []
 
     _utc = field_validator("entrada", "salida")(utc)
+
+
+class CambioCeldaRespuesta(BaseModel):
+    estancia: MovimientoRespuesta
+    intercambio: MovimientoRespuesta | None
 
 
 class Cupo(BaseModel):

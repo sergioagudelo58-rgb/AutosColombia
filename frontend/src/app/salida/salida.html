@@ -3,7 +3,10 @@
     <div>
       <span class="eyebrow">OPERACIÓN · PUERTA</span>
       <h1 id="salida-title">Registrar salida</h1>
-      <p>Digita la placa, verifica el recibo que presenta el conductor y confirma la salida.</p>
+      <p>
+        Digita la placa o el número del recibo que presenta el conductor, verifica los datos y
+        confirma la salida.
+      </p>
     </div>
   </header>
 
@@ -12,7 +15,8 @@
   @if (salida(); as s) {
     <div class="notice success" role="status">
       <strong>Salida registrada · Celda {{ s.celda.codigo }} disponible</strong>
-      {{ s.placa }} salió el {{ fecha(s.salida) }}.
+      {{ s.placa }} salió el {{ fecha(s.salida) }} por {{ s.puerta_salida?.nombre ?? '—' }} · recibo
+      {{ s.numero_recibo }}.
     </div>
   }
 
@@ -20,20 +24,20 @@
     <h2 id="buscar-title">Buscar ingreso abierto</h2>
     <form [formGroup]="form" (ngSubmit)="buscar()" class="buscar" novalidate>
       <div class="field">
-        <label for="placa" class="sr-only">Placa</label>
+        <label for="busqueda" class="sr-only">Placa o número de recibo</label>
         <input
-          id="placa"
+          id="busqueda"
           class="plate"
-          formControlName="placa"
-          placeholder="ABC123"
+          formControlName="busqueda"
+          placeholder="ABC123 o E-000245"
           autocomplete="off"
-          maxlength="8"
-          [attr.aria-invalid]="form.controls.placa.touched && form.controls.placa.invalid"
-          aria-describedby="placa-error"
+          maxlength="22"
+          [attr.aria-invalid]="form.controls.busqueda.touched && form.controls.busqueda.invalid"
+          aria-describedby="busqueda-error"
         />
-        <span id="placa-error" class="field-error">
-          @if (form.controls.placa.touched && form.controls.placa.invalid) {
-            {{ mensajePlaca }}
+        <span id="busqueda-error" class="field-error">
+          @if (form.controls.busqueda.touched && form.controls.busqueda.invalid) {
+            {{ mensajeBusqueda }}
           }
         </span>
       </div>
@@ -75,10 +79,21 @@
           <dt>Cliente</dt>
           <dd>{{ r.cliente ?? '—' }}</dd>
         </div>
+        @if (r.novedades?.length) {
+          <div>
+            <dt>Cambios de celda</dt>
+            <dd>
+              @for (n of r.novedades; track n.id) {
+                {{ n.celda_anterior.codigo }} → {{ n.celda_nueva.codigo }}<br />
+              }
+            </dd>
+          </div>
+        }
       </dl>
       <p class="notice info">
-        Verifica que el recibo que presenta el conductor sea el <b>{{ r.numero_recibo }}</b
-        >.
+        Verifica que el recibo que presenta el conductor sea el <b>{{ r.numero_recibo }}</b> y que
+        la placa <b>{{ r.placa }}</b> coincida con el vehículo. Si no coinciden, no confirmes la
+        salida.
       </p>
       @if (!turnos.activo()) {
         <p class="notice warning">Inicia tu turno (operador y puerta) para confirmar.</p>

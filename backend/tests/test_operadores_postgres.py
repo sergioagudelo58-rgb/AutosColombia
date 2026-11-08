@@ -20,7 +20,7 @@ def test_operadores_structure_and_crud():
         transaction = connection.begin()
         try:
             assert connection.scalar(text("SELECT current_database()")) == "autos_colombia"
-            assert connection.scalar(text("SELECT version_num FROM alembic_version")) in {"0001", "0002", "0003", "0004", "0005"}
+            assert connection.scalar(text("SELECT version_num FROM alembic_version")) in {"0001", "0002", "0003", "0004", "0005", "0006"}
             inspector = inspect(connection)
             columns = {c["name"]: c for c in inspector.get_columns("operador")}
             assert set(columns) == {"id", "nombre", "telefono"}
@@ -43,23 +43,29 @@ def test_operadores_structure_and_crud():
                     initial = client.get("/operadores").json()
                     assert initial["offset"] == 0 and initial["limit"] == 20
                     name = "TEST-OPERADOR-" + uuid4().hex
-                    payload = {"nombre": f" {name} ", "telefono": " +57 322 656 1122 "}
+                    # Teléfonos aleatorios: no chocan con operadores reales de la base local.
+                    digitos = int(uuid4().hex[:12], 16)
+                    celular = f"32{digitos % 10**8:08d}"
+                    otro_celular = f"31{digitos // 10**8 % 10**8:08d}"
+                    fijo = f"601{digitos % 10**7:07d}"
+                    payload = {"nombre": f" {name} ",
+                               "telefono": f" +57 {celular[:3]} {celular[3:6]} {celular[6:]} "}
                     created = client.post("/operadores", json=payload)
                     assert created.status_code == 201
                     item = created.json()
-                    assert item == {"id": item["id"], "nombre": name, "telefono": "3226561122"}
+                    assert item == {"id": item["id"], "nombre": name, "telefono": celular}
                     assert type(item["id"]) is int and item["id"] > 0
                     path = f"/operadores/{item['id']}"
                     assert client.get(path).json() == item
                     # El nombre puede repetirse; el teléfono, no (ni con otro formato).
-                    repeated = client.post("/operadores", json={**payload, "telefono": "3226561122"})
+                    repeated = client.post("/operadores", json={**payload, "telefono": celular})
                     assert repeated.status_code == 409
                     assert repeated.json() == {"detail": "Ya existe un operador con ese teléfono."}
-                    duplicate = client.post("/operadores", json={**payload, "telefono": "3001234567"})
+                    duplicate = client.post("/operadores", json={**payload, "telefono": otro_celular})
                     assert duplicate.status_code == 201
                     duplicate_id = duplicate.json()["id"]
                     assert duplicate_id != item["id"]
-                    taken = client.patch(path, json={"telefono": "300 123 4567"})
+                    taken = client.patch(path, json={"telefono": f"{otro_celular[:3]} {otro_celular[3:6]} {otro_celular[6:]}"})
                     assert taken.status_code == 409
                     page = client.get(f"/operadores?offset={initial['total']}&limit=2")
                     assert page.status_code == 200
@@ -75,9 +81,9 @@ def test_operadores_structure_and_crud():
                         assert client.patch(path, json=invalid).status_code == 422
                     assert client.post("/operadores", json={}).status_code == 422
                     assert client.patch(path, json={}).json() == item
-                    changed = client.patch(path, json={"telefono": " (601) 234-5678 "})
+                    changed = client.patch(path, json={"telefono": f" (601) {fijo[3:6]}-{fijo[6:]} "})
                     assert changed.status_code == 200
-                    item["telefono"] = "6012345678"
+                    item["telefono"] = fijo
                     assert changed.json() == item
                     changed = client.patch(path, json={"nombre": " " + name + " editado "})
                     assert changed.status_code == 200
