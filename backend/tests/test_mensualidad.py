@@ -62,8 +62,16 @@ def test_entrada_no_acepta_celda_y_exige_puerta():
         EntradaCrear(placa="ABC123", operador_id=1, puerta_id=1, celda_id=1)
     with pytest.raises(ValidationError):
         EntradaCrear(placa="ABC123", operador_id=1)
-    # La salida conserva su contrato: placa y operador.
-    assert SalidaCrear(placa="abc-123", operador_id=1).placa == "ABC123"
+
+
+def test_salida_por_placa_o_recibo_con_puerta():
+    # RF-07: placa o recibo (o ambos, que el servidor verifica) y la puerta de salida.
+    assert SalidaCrear(placa="abc-123", operador_id=1, puerta_id=2).placa == "ABC123"
+    assert SalidaCrear(numero_recibo="e231", operador_id=1, puerta_id=1).numero_recibo == "E-000231"
+    with pytest.raises(ValidationError, match="placa o el número del recibo"):
+        SalidaCrear(operador_id=1, puerta_id=1)
+    with pytest.raises(ValidationError):
+        SalidaCrear(placa="ABC123", operador_id=1)
 
 
 def test_cliente_normaliza_documento_telefono_y_correo():

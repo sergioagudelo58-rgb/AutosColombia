@@ -1,5 +1,57 @@
 # Autos Colombia
 
+## Iteración RF-07 a RF-11 (salida, mapa en vivo, novedades, reportes e historial)
+
+Completa la iteración 1 del documento «EA1 Diseño de sistema de información».
+
+| RF / HU | Qué hace | Dónde |
+| --- | --- | --- |
+| RF-07 / HU-07 Registrar salida | Búsqueda por placa **o** número de recibo (`E-000245`, `e245` o `245`). La pantalla envía placa y recibo, y el servidor responde 409 si no son del mismo ingreso. Al cerrar se guardan fecha, operador y **puerta de salida**. | `GET /estancias/abierta?placa=…\|recibo=…`, `POST /estancias/salida`, pantalla **Salida** |
+| RF-08 / HU-08 Celdas en tiempo real | Mapa de todas las celdas: verde disponible, rojo ocupada, azul recién asignada (60 s), cada una con su texto. Muestra disponibles por tipo y la actividad reciente de las dos puertas. Al seleccionar una celda ocupada se ven placa, tipo, hora, puerta, recibo y operador. | `GET /panel`, pantalla **Mapa** (`/operacion/celdas`) |
+| RF-09 / HU-09 Reasignar celda | Exige un motivo y el operador del turno. Si la celda está libre, hace un cambio simple. Si está ocupada, solo se puede **intercambiar** las celdas de los dos registros. Cada cambio queda en `novedad` y no se edita ni se borra. Las celdas deben ser del mismo tipo. | `POST /estancias/{id}/celda`, detalle de la celda en **Mapa** |
+| RF-10 / HU-10 Reporte de ocupación | Muestra clientes, vehículos por tipo, vehículos adentro, celdas ocupadas y disponibles por tipo, % de ocupación, y entradas, salidas y cambios de celda del rango. Por defecto el rango es el día actual en Colombia. Se puede exportar a PDF (impresión del navegador) o a Excel (CSV con `;` y BOM). El archivo indica la fecha y quién lo generó. | `GET /reportes/ocupacion?desde&hasta`, pantalla **Reportes** |
+| RF-11 / HU-11 Historial | Filtra por placa (texto parcial), cliente (documento o parte del nombre) y rango de fechas (entrada, salida o novedad dentro del rango). Es paginado y de solo consulta. Los ingresos abiertos aparecen como «En el parqueadero» y cada registro muestra sus novedades. | `GET /reportes/historial`, pestaña **Historial** |
+
+Decisiones:
+
+- **Tiempo real (RNF-02)**: la pantalla consulta `/panel` cada 2 s con `exhaustMap`, que no
+  apila solicitudes. Así se cumple el plazo de 2 s sin agregar dependencias ni WebSocket. Si se
+  pierde la conexión, conserva el último estado y lo indica.
+- **Intercambio de celdas**: la regla «una estancia abierta por celda» deja de ser un índice
+  único parcial y pasa a ser la restricción `ex_estancia_celda_abierta`
+  (`EXCLUDE … WHERE salida IS NULL DEFERRABLE INITIALLY IMMEDIATE`). Se comprueba al instante
+  salvo durante el intercambio, que la difiere hasta el commit para mover los dos registros.
+- **Contrato de salida**: `POST /estancias/salida` ahora exige `puerta_id` y acepta `placa`,
+  `numero_recibo` o ambos.
+- **Roles**: los reportes y el historial corresponden al administrador, pero todavía no existe
+  inicio de sesión (RNF-05). Por eso son visibles para cualquier usuario y el «usuario que lo
+  generó» es el operador del turno.
+
+### Migración 0006
+
+```powershell
+Push-Location backend
+.\.venv\Scripts\python.exe -m alembic -c alembic.ini upgrade head --sql
+.\.venv\Scripts\python.exe -m alembic -c alembic.ini upgrade head
+Pop-Location
+```
+
+La migración crea la tabla `novedad`, reemplaza el índice de celda abierta por la restricción
+diferible y exige la puerta de salida en los registros cerrados. Las estancias cerradas antes
+de esta revisión no la guardaban: se asignan a **Puerta 1**, igual que hizo 0005 con la puerta
+de entrada. El proxy de Angular incluye ahora `/panel` y `/reportes/**`; reinicia
+`npm.cmd start` para cargarlo.
+
+### Pruebas
+
+- `backend/tests/test_reportes_api.py` y `test_novedad.py` prueban los contratos HTTP, el
+  modelo y el SQL offline de 0006 sin PostgreSQL.
+- `backend/tests/test_reportes_postgres.py` (`RUN_POSTGRES_TESTS=1`, revisión `0006`) cubre la
+  salida por recibo con verificación de placa, el cambio simple, el intercambio, el panel, el
+  reporte y el historial.
+- Frontend: `mapa.spec.ts` (actualización cada 2 s, cambio e intercambio), `reportes.spec.ts`
+  y `salida.spec.ts`.
+
 ## Iteración RF-01 a RF-05 (alineada con el documento de diseño)
 
 Esta etapa implementa los requerimientos RF-01 a RF-05 del documento «EA1 Diseño de sistema

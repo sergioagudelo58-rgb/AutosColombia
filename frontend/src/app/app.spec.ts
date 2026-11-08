@@ -18,9 +18,11 @@ describe('Navegación', () => {
     expect(enlaces).toEqual([
       ['/operacion/entrada', 'Entrada'],
       ['/operacion/salida', 'Salida'],
+      ['/operacion/celdas', 'Mapa'],
       ['/gestion/clientes', 'Clientes'],
       ['/gestion/operadores', 'Operadores'],
       ['/gestion/celdas', 'Celdas'],
+      ['/gestion/reportes', 'Reportes'],
       ['/', 'Inicio'],
     ]);
   });

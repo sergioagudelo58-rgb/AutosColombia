@@ -1,0 +1,267 @@
+<section class="ui" aria-labelledby="reportes-title">
+  <header class="heading no-print">
+    <div>
+      <span class="eyebrow">ADMINISTRACIÓN</span>
+      <h1 id="reportes-title">Reportes</h1>
+      <p>Ocupación del parqueadero e historial de entradas, salidas y cambios de celda.</p>
+    </div>
+  </header>
+
+  <div class="tabs no-print" role="tablist" aria-label="Tipo de reporte">
+    <button
+      type="button"
+      role="tab"
+      id="tab-ocupacion"
+      [attr.aria-selected]="pestana() === 'ocupacion'"
+      aria-controls="panel-ocupacion"
+      (click)="pestana.set('ocupacion')"
+    >
+      Ocupación
+    </button>
+    <button
+      type="button"
+      role="tab"
+      id="tab-historial"
+      [attr.aria-selected]="pestana() === 'historial'"
+      aria-controls="panel-historial"
+      (click)="pestana.set('historial')"
+    >
+      Historial
+    </button>
+  </div>
+
+  @if (pestana() === 'ocupacion') {
+    <div id="panel-ocupacion" role="tabpanel" aria-labelledby="tab-ocupacion">
+      <form class="panel filtros no-print" [formGroup]="rango" (ngSubmit)="generar()" novalidate>
+        <div class="field">
+          <label for="desde">Desde</label>
+          <input id="desde" type="date" formControlName="desde" />
+        </div>
+        <div class="field">
+          <label for="hasta">Hasta</label>
+          <input id="hasta" type="date" formControlName="hasta" />
+        </div>
+        <div class="actions">
+          <button class="primary" type="submit" [disabled]="generando()">
+            {{ generando() ? 'Generando…' : 'Generar' }}
+          </button>
+          <button type="button" (click)="exportarPdf()" [disabled]="!reporte()">
+            Exportar PDF
+          </button>
+          <button type="button" (click)="exportarExcel()" [disabled]="!reporte()">
+            Exportar Excel
+          </button>
+        </div>
+      </form>
+      @if (errorReporte()) {
+        <p class="notice error" role="alert">{{ errorReporte() }}</p>
+      }
+
+      @if (reporte(); as r) {
+        <article class="reporte" aria-label="Reporte de ocupación">
+          <header class="encabezado">
+            <h2>Reporte de ocupación</h2>
+            <p class="muted">
+              Rango {{ dia(r.desde) }} – {{ dia(r.hasta) }} · Generado
+              {{ fecha(r.generado_en) }} por
+              {{ usuario() }}
+            </p>
+          </header>
+          <div class="kpis">
+            <div class="kpi">
+              <span>Ocupación</span>
+              <strong>{{ r.porcentaje_ocupacion }} %</strong>
+              <small>{{ r.celdas_ocupadas }} de {{ r.celdas_total }} celdas</small>
+            </div>
+            <div class="kpi">
+              <span>Vehículos adentro</span>
+              <strong>{{ r.vehiculos_adentro }}</strong>
+              <small>{{ r.celdas_disponibles }} celdas disponibles</small>
+            </div>
+            <div class="kpi">
+              <span>Entradas en el rango</span>
+              <strong>{{ r.entradas }}</strong>
+              <small>{{ r.salidas }} salidas · {{ r.novedades }} cambios de celda</small>
+            </div>
+            <div class="kpi">
+              <span>Clientes registrados</span>
+              <strong>{{ r.clientes_registrados }}</strong>
+              <small>{{ r.vehiculos_registrados }} vehículos registrados</small>
+            </div>
+          </div>
+          <div class="two-col tablas">
+            <section class="panel">
+              <h3>Celdas por tipo</h3>
+              <div class="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th scope="col">Tipo</th>
+                      <th scope="col">Ocupadas</th>
+                      <th scope="col">Disponibles</th>
+                      <th scope="col">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    @for (c of r.cupos; track c.tipo_celda) {
+                      <tr>
+                        <td>{{ nombreCelda(c.tipo_celda) }}</td>
+                        <td>{{ c.ocupadas }}</td>
+                        <td>{{ c.disponibles }}</td>
+                        <td>{{ c.total }}</td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+            </section>
+            <section class="panel">
+              <h3>Vehículos registrados por tipo</h3>
+              <div class="table-scroll">
+                <table>
+                  <tbody>
+                    @for (t of tiposVehiculo(r); track t.tipo) {
+                      <tr>
+                        <th scope="row">{{ nombreVehiculo(t.tipo) }}</th>
+                        <td>{{ t.total }}</td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          </div>
+        </article>
+      }
+    </div>
+  } @else {
+    <div id="panel-historial" role="tabpanel" aria-labelledby="tab-historial">
+      <form class="panel filtros" [formGroup]="filtros" (ngSubmit)="buscar()" novalidate>
+        <div class="field">
+          <label for="h-placa">Placa</label>
+          <input id="h-placa" formControlName="placa" maxlength="10" placeholder="KDT482" />
+        </div>
+        <div class="field">
+          <label for="h-cliente">Cliente</label>
+          <input
+            id="h-cliente"
+            formControlName="cliente"
+            maxlength="100"
+            placeholder="Documento o nombre"
+          />
+        </div>
+        <div class="field">
+          <label for="h-desde">Desde</label>
+          <input id="h-desde" type="date" formControlName="desde" />
+        </div>
+        <div class="field">
+          <label for="h-hasta">Hasta</label>
+          <input id="h-hasta" type="date" formControlName="hasta" />
+        </div>
+        <div class="actions">
+          <button class="primary" type="submit" [disabled]="buscando()">
+            {{ buscando() ? 'Buscando…' : 'Buscar' }}
+          </button>
+          <button type="button" (click)="limpiar()">Limpiar</button>
+        </div>
+      </form>
+      @if (errorHistorial()) {
+        <p class="notice error" role="alert">{{ errorHistorial() }}</p>
+      }
+
+      @if (historial(); as h) {
+        <section class="panel" aria-labelledby="movimientos-title">
+          <div class="row-between">
+            <h2 id="movimientos-title">Movimientos</h2>
+            <span class="muted">{{ h.total }} {{ h.total === 1 ? 'registro' : 'registros' }}</span>
+          </div>
+          @if (!h.items.length) {
+            <p class="hint">No hay movimientos con esos filtros.</p>
+          } @else {
+            <div class="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th scope="col">Recibo</th>
+                    <th scope="col">Vehículo</th>
+                    <th scope="col">Cliente</th>
+                    <th scope="col">Celda</th>
+                    <th scope="col">Entrada</th>
+                    <th scope="col">Salida</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (m of h.items; track m.id) {
+                    <tr>
+                      <td>{{ m.numero_recibo }}</td>
+                      <td>
+                        <b>{{ m.placa }}</b
+                        ><br /><span class="muted">{{ nombreVehiculo(m.tipo_vehiculo) }}</span>
+                      </td>
+                      <td>
+                        {{ m.cliente ?? '—' }}
+                        @if (m.cliente_documento) {
+                          <br /><span class="muted">{{ m.cliente_documento }}</span>
+                        }
+                      </td>
+                      <td>
+                        {{ m.celda.codigo }}
+                        @for (n of m.novedades ?? []; track n.id) {
+                          <p class="novedad">
+                            {{ n.celda_anterior.codigo }} → {{ n.celda_nueva.codigo }} ·
+                            {{ n.motivo }}
+                            <span class="muted"
+                              >{{ fecha(n.fecha) }} · {{ n.operador.nombre }}</span
+                            >
+                          </p>
+                        }
+                      </td>
+                      <td>
+                        {{ fecha(m.entrada) }}<br />
+                        <span class="muted"
+                          >{{ m.puerta_entrada.nombre }} · {{ m.operador_entrada.nombre }}</span
+                        >
+                      </td>
+                      <td>
+                        @if (m.abierta) {
+                          <span class="badge warn">En el parqueadero</span>
+                        } @else {
+                          {{ fecha(m.salida) }}<br />
+                          <span class="muted"
+                            >{{ m.puerta_salida?.nombre ?? 'Puerta no registrada' }} ·
+                            {{ m.operador_salida?.nombre ?? '—' }}</span
+                          >
+                        }
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+            <div class="actions paginacion">
+              <button
+                type="button"
+                [disabled]="buscando() || h.offset === 0"
+                (click)="pagina(h.offset - h.limit)"
+              >
+                Anterior
+              </button>
+              <span class="muted"
+                >{{ h.offset + 1 }}–{{ h.offset + h.items.length }} de {{ h.total }}</span
+              >
+              <button
+                type="button"
+                [disabled]="buscando() || h.offset + h.limit >= h.total"
+                (click)="pagina(h.offset + h.limit)"
+              >
+                Siguiente
+              </button>
+            </div>
+          }
+        </section>
+      } @else {
+        <p class="hint">Filtra por placa, cliente o rango de fechas y presiona Buscar.</p>
+      }
+    </div>
+  }
+</section>

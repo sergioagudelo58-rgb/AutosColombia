@@ -10,9 +10,10 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.schema import CreateIndex, CreateTable
 
-from app.models import Base, Estancia, Operador
+from app.models import Base, Estancia, Operador, Puerta
 
 ENTRADA = datetime(2026, 10, 19, 10, tzinfo=timezone.utc)
+PUERTA = Puerta(id=2, nombre="Puerta 2")
 
 
 def test_cerrar_asigna_fecha_relacion_e_id_sin_sesion():
@@ -21,13 +22,14 @@ def test_cerrar_asigna_fecha_relacion_e_id_sin_sesion():
     assert estancia.esta_abierta() is True
     # Misma hora absoluta con otro huso: la igualdad está permitida.
     salida = ENTRADA.astimezone(timezone(timedelta(hours=-5)))
-    estancia.cerrar(salida, operador)
+    estancia.cerrar(salida, operador, PUERTA)
     assert estancia.esta_abierta() is False
+    assert estancia.puerta_salida is PUERTA and estancia.puerta_salida_id == 2
     assert estancia.salida == salida
     assert estancia.operador_salida is operador
     assert estancia.operador_salida_id == 7
     with pytest.raises(ValueError, match="cerrada"):
-        estancia.cerrar(ENTRADA + timedelta(hours=1), operador)
+        estancia.cerrar(ENTRADA + timedelta(hours=1), operador, PUERTA)
     assert estancia.salida == salida
 
 
@@ -35,7 +37,7 @@ def test_cerrar_asigna_fecha_relacion_e_id_sin_sesion():
 def test_rechaza_fecha_invalida_sin_cambiar_estado(salida):
     estancia = Estancia(entrada=ENTRADA)
     with pytest.raises(ValueError):
-        estancia.cerrar(salida, Operador(id=7))
+        estancia.cerrar(salida, Operador(id=7), PUERTA)
     assert estancia.esta_abierta()
     assert estancia.operador_salida is None
     assert estancia.operador_salida_id is None
@@ -44,16 +46,24 @@ def test_rechaza_fecha_invalida_sin_cambiar_estado(salida):
 @pytest.mark.parametrize("entrada", [None, datetime(2026, 10, 19)])
 def test_cerrar_requiere_entrada_cargada_con_zona(entrada):
     with pytest.raises(ValueError, match="entrada"):
-        Estancia(entrada=entrada).cerrar(ENTRADA, Operador(id=7))
+        Estancia(entrada=entrada).cerrar(ENTRADA, Operador(id=7), PUERTA)
 
 
 @pytest.mark.parametrize("operador", [None, 7, Operador(nombre="Sin persistir", telefono="001")])
 def test_operador_invalido_no_deja_cierre_parcial(operador):
     estancia = Estancia(entrada=ENTRADA)
     with pytest.raises(ValueError, match="operador"):
-        estancia.cerrar(ENTRADA, operador)
+        estancia.cerrar(ENTRADA, operador, PUERTA)
     assert estancia.salida is None
     assert estancia.operador_salida_id is None
+
+
+@pytest.mark.parametrize("puerta", [None, 1, Puerta(nombre="Sin persistir")])
+def test_puerta_invalida_no_deja_cierre_parcial(puerta):
+    estancia = Estancia(entrada=ENTRADA)
+    with pytest.raises(ValueError, match="puerta"):
+        estancia.cerrar(ENTRADA, Operador(id=7), puerta)
+    assert estancia.salida is None and estancia.puerta_salida_id is None
 
 
 def test_relaciones_y_columnas():

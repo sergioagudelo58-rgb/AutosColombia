@@ -6,6 +6,7 @@ from sqlalchemy import (
     BigInteger, CheckConstraint, Computed, Date, DateTime, ForeignKey, Identity, Index, Integer, SmallInteger,
     Text, UniqueConstraint, func, text,
 )
+from sqlalchemy.dialects.postgresql import ExcludeConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, validates
 
 TIPOS_VEHICULO = ("MOTO", "CARRO", "CAMIONETA")
@@ -162,11 +163,18 @@ class Estancia(Base):
             "(salida IS NULL) = (operador_salida_id IS NULL)",
             name="ck_estancia_cierre_completo",
         ),
+        # RF-07: la puerta de salida se informa junto con la salida.
+        CheckConstraint(
+            "(salida IS NULL) = (puerta_salida_id IS NULL)",
+            name="ck_estancia_puerta_salida",
+        ),
         UniqueConstraint("numero_recibo", name="uq_estancia_numero_recibo"),
         Index("uq_estancia_vehiculo_abierta", "vehiculo_id", unique=True,
               postgresql_where=text("salida IS NULL")),
-        Index("uq_estancia_celda_abierta", "celda_id", unique=True,
-              postgresql_where=text("salida IS NULL")),
+        # Una estancia abierta por celda. Es diferible para que el intercambio de celdas (RF-09)
+        # pueda mover dos registros en la misma transacción; fuera de él se comprueba al instante.
+        ExcludeConstraint(("celda_id", "="), name="ex_estancia_celda_abierta", using="btree",
+                          where=text("salida IS NULL"), deferrable=True, initially="IMMEDIATE"),
         Index("ix_estancia_vehiculo_entrada", "vehiculo_id", "entrada"),
     )
 
@@ -202,11 +210,14 @@ class Estancia(Base):
     operador_salida: Mapped[Operador | None] = relationship(foreign_keys=[operador_salida_id])
     puerta_entrada: Mapped[Puerta] = relationship(foreign_keys=[puerta_entrada_id])
     puerta_salida: Mapped[Puerta | None] = relationship(foreign_keys=[puerta_salida_id])
+    novedades: Mapped[list["Novedad"]] = relationship(
+        back_populates="estancia", order_by="Novedad.fecha", foreign_keys="Novedad.estancia_id"
+    )
 
     def esta_abierta(self) -> bool:
         return self.salida is None
 
-    def cerrar(self, fecha_salida: datetime, operador: Operador) -> None:
+    def cerrar(self, fecha_salida: datetime, operador: Operador, puerta: Puerta) -> None:
         """Valida y asigna el cierre; el servicio debe gestionar flush y commit."""
         if not self.esta_abierta():
             raise ValueError("La estancia ya está cerrada.")
@@ -218,6 +229,46 @@ class Estancia(Base):
             raise ValueError("La salida no puede ser anterior a la entrada.")
         if not isinstance(operador, Operador) or operador.id is None:
             raise ValueError("El operador de salida debe tener un id asignado.")
+        if not isinstance(puerta, Puerta) or puerta.id is None:
+            raise ValueError("La puerta de salida debe tener un id asignado.")
         self.salida = fecha_salida
         self.operador_salida = operador
         self.operador_salida_id = operador.id
+        self.puerta_salida = puerta
+        self.puerta_salida_id = puerta.id
+
+
+class Novedad(Base):
+    """Cambio de celda de un registro abierto (RN-12, RF-09). Nunca se edita ni se borra (RNF-07)."""
+    __tablename__ = "novedad"
+    __table_args__ = (
+        CheckConstraint("celda_anterior_id <> celda_nueva_id", name="ck_novedad_celdas_distintas"),
+        CheckConstraint("motivo ~ '[^[:space:]]'", name="ck_novedad_motivo_no_vacio"),
+        Index("ix_novedad_estancia", "estancia_id"),
+        Index("ix_novedad_fecha", "fecha"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    estancia_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("estancia.id", name="fk_novedad_estancia", ondelete="RESTRICT"), nullable=False
+    )
+    celda_anterior_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("celda.id", name="fk_novedad_celda_anterior", ondelete="RESTRICT"), nullable=False
+    )
+    celda_nueva_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("celda.id", name="fk_novedad_celda_nueva", ondelete="RESTRICT"), nullable=False
+    )
+    motivo: Mapped[str] = mapped_column(Text, nullable=False)
+    operador_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("operador.id", name="fk_novedad_operador", ondelete="RESTRICT"), nullable=False
+    )
+    fecha: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    estancia: Mapped[Estancia] = relationship(back_populates="novedades", foreign_keys=[estancia_id])
+    celda_anterior: Mapped[Celda] = relationship(foreign_keys=[celda_anterior_id])
+    celda_nueva: Mapped[Celda] = relationship(foreign_keys=[celda_nueva_id])
+    operador: Mapped[Operador] = relationship()
+
+    @validates("motivo")
+    def validate_motivo(self, key: str, value: str) -> str:
+        return required_text(value, "El motivo")
