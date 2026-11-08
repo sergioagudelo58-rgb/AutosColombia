@@ -11,7 +11,10 @@ instalar y ejecutar los proyectos en Windows está en `README.md`.
 - `backend/app/config.py`: carga `backend/.env` por ruta absoluta; el entorno tiene prioridad.
 - `backend/app/database.py`: motor SQLAlchemy y sesiones bajo demanda con psycopg.
 - `backend/check_db.py`: comprobación explícita mediante `SELECT 1`, sin DDL.
-- `backend/app/models.py`: Base, Vehiculo, Celda y Operador; tablas en singular y minúsculas.
+- `backend/app/models.py`: Base, Cliente, Vehiculo, Celda, Operador, Puerta, Estancia y Novedad;
+  tablas en singular y minúsculas.
+- `backend/app/services/panel.py` y `app/services/reporte.py`: mapa en vivo (RF-08), reporte de
+  ocupación (RF-10) e historial (RF-11); `services/estancia.py` también cubre salida y novedades.
 - `backend/app/schemas/vehiculo.py`: validación Pydantic y contratos de respuesta.
 - `backend/app/routers/vehiculos.py`: rutas CRUD con APIRouter.
 - `backend/app/services/vehiculo.py`: lógica de vehículos, transacciones y errores públicos.
@@ -26,6 +29,8 @@ instalar y ejecutar los proyectos en Windows está en `README.md`.
 - `frontend/src/app/home/`: bienvenida y estado de salud de la API.
 - `frontend/src/app/vehiculos/`: formulario reactivo y listado paginado de vehículos.
 - `frontend/src/app/celdas/`: gestión de celdas; `CeldasService` reutiliza la base de API.
+- `frontend/src/app/mapa/`: mapa de celdas que consulta `/panel` cada 2 s y cambia celdas (RF-08, RF-09).
+- `frontend/src/app/reportes/`: reporte de ocupación con exportación e historial con filtros.
 - `frontend/src/app/services/api.service.ts`: llamadas HTTP y base de API centralizadas.
 - `frontend/src/app/models/vehiculo.ts`: contratos de solicitudes, respuestas y tipos.
 - `frontend/src/styles.css`: estilos globales; estilos de componentes en CSS.
@@ -71,7 +76,7 @@ instalar y ejecutar los proyectos en Windows está en `README.md`.
   del controlador. Verificar PostgreSQL con `backend/check_db.py`; las pruebas
   simuladas no prueban que exista una conexión local real.
 - La pantalla consulta `/health` mediante `HttpClient` al cargarse. El proxy de
-  desarrollo en `frontend/proxy.conf.json` dirige `/health`, `/vehiculos` y
+  desarrollo en `frontend/proxy.conf.json` dirige también `/panel` y `/reportes/**`; incluye `/health`, `/vehiculos` y
   `/vehiculos/**` a `127.0.0.1:8000`. La pantalla de gestión usa `/gestion/vehiculos`
   para no colisionar con las rutas API. Las llamadas pasan por `ApiService`.
   Mantener rutas relativas y documentar cualquier integración que se añada.
