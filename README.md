@@ -25,12 +25,12 @@ lectura: un trigger impide `UPDATE`, `DELETE` y `TRUNCATE`.
 Push-Location backend
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt   # agrega bcrypt
 .\.venv\Scripts\python.exe -m alembic -c alembic.ini upgrade head --sql   # revisar
-.\.venv\Scripts\python.exe -m alembic -c alembic.ini upgrade head         # migración 0007
+.\.venv\Scripts\python.exe -m alembic -c alembic.ini upgrade head         # migraciones hasta 0007b
 .\.venv\Scripts\python.exe -m app.crear_administrador                     # primer administrador
 Pop-Location
 ```
 
-La migración 0007 convierte cada operador existente en una cuenta con usuario `operador<id>`,
+La migración 0007b convierte cada operador existente en una cuenta con usuario `operador<id>`,
 sin contraseña. Desde **Usuarios**, el administrador completa sus datos y usa **Restablecer
 contraseña** para entregarle una temporal. El proxy de Angular incluye ahora `/auth/**` y
 `/usuarios/**`; reinicia `npm.cmd start` para cargarlo. La pantalla y la API `/operadores` se
@@ -40,7 +40,7 @@ reemplazan por **Usuarios**.
 
 - Backend: `test_auth_postgres.py` cubre RF-01 a RF-07 por HTTP con tokens reales, y
   `test_seguridad.py` prueba la política de contraseñas sin base de datos. Las pruebas de
-  PostgreSQL esperan la revisión `0007`.
+  PostgreSQL esperan la revisión `0007b`.
 - Frontend: `auth.spec.ts` (ingreso, token, cierre por el servidor, cambio de contraseña),
   `usuarios.spec.ts` y `app.spec.ts` (menú por perfil).
 

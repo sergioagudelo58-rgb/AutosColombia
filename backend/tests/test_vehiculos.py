@@ -5,6 +5,8 @@ import pytest
 from pydantic import ValidationError
 from sqlalchemy.exc import IntegrityError
 
+from conftest import ADMIN_PRUEBA
+
 from app.schemas.vehiculo import VehiculoActualizar, VehiculoCrear
 from app.services.vehiculo import VehiculoError, delete_vehicle
 
@@ -36,12 +38,13 @@ def test_creation_requires_every_field():
 def test_delete_foreign_key_conflict_rolls_back_without_related_deletes():
     session = MagicMock()
     vehicle = session.get.return_value
+    vehicle.id, vehicle.placa, vehicle.tipo = 1, "ABC123", "MOTO"
     driver_error = Exception("private database details")
     driver_error.sqlstate = "23503"
     driver_error.diag = SimpleNamespace(constraint_name="some_foreign_key")
     session.commit.side_effect = IntegrityError("DELETE", {}, driver_error)
     with pytest.raises(VehiculoError) as result:
-        delete_vehicle(session, 1)
+        delete_vehicle(session, 1, ADMIN_PRUEBA)
     assert result.value.status_code == 409
     assert "private" not in result.value.detail
     session.rollback.assert_called_once()
