@@ -11,7 +11,7 @@ export interface OcupacionCelda {
   puerta: string;
   operador: string;
 }
-export type EstadoCelda = 'DISPONIBLE' | 'OCUPADA';
+export type EstadoCelda = 'DISPONIBLE' | 'OCUPADA' | 'INHABILITADA';
 export interface CeldaEstado {
   id: number;
   codigo: string;

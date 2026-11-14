@@ -1,0 +1,205 @@
+<section class="ui" aria-labelledby="mapa-title">
+  <header class="heading">
+    <div>
+      <span class="eyebrow">OPERACIÓN · EN VIVO</span>
+      <h1 id="mapa-title">Mapa de celdas</h1>
+      <p>
+        Estado de las celdas en tiempo real para las dos puertas. Selecciona una celda ocupada para
+        ver su detalle o corregir la celda.
+      </p>
+    </div>
+    <p class="actualizado" role="status" aria-live="polite">
+      @if (sinConexion()) {
+        <span class="badge bad">Sin conexión · reintentando</span>
+      } @else if (panel(); as p) {
+        <span class="badge ok">En vivo</span> Actualizado {{ hora(p.generado_en) }}
+      } @else {
+        Cargando…
+      }
+    </p>
+  </header>
+
+  @if (panel(); as p) {
+    <div class="kpis" aria-label="Celdas disponibles por tipo">
+      @for (cupo of p.cupos; track cupo.tipo_celda) {
+        <div class="kpi">
+          <span>{{ nombreTipoCelda(cupo.tipo_celda) }} disponibles</span>
+          <strong [class.lleno]="cupo.disponibles === 0">{{ cupo.disponibles }}</strong>
+          <small>{{ cupo.ocupadas }} ocupadas de {{ cupo.total }}</small>
+        </div>
+      }
+    </div>
+
+    <ul class="leyenda" aria-label="Convenciones">
+      <li><span class="muestra disponible"></span> Disponible</li>
+      <li><span class="muestra ocupada"></span> Ocupada</li>
+      <li><span class="muestra reciente"></span> Recién asignada (últimos 60 s)</li>
+    </ul>
+
+    <div class="two-col">
+      <div>
+        @for (grupo of celdasPorTipo(); track grupo.tipo) {
+          <section class="panel grupo" [attr.aria-label]="grupo.nombre">
+            <h2>{{ grupo.nombre }}</h2>
+            @if (!grupo.celdas.length) {
+              <p class="hint">No hay celdas de este tipo.</p>
+            }
+            <div class="mapa">
+              @for (c of grupo.celdas; track c.id) {
+                <button
+                  type="button"
+                  class="celda"
+                  [class.disponible]="c.estado === 'DISPONIBLE'"
+                  [class.ocupada]="c.estado === 'OCUPADA' && !c.reciente"
+                  [class.reciente]="c.reciente"
+                  [class.activa]="seleccionId() === c.id"
+                  [attr.aria-pressed]="seleccionId() === c.id"
+                  [attr.aria-label]="etiqueta(c)"
+                  (click)="seleccionar(c)"
+                >
+                  <b>{{ c.codigo }}</b>
+                  <small>{{ c.ocupacion?.placa ?? 'Libre' }}</small>
+                </button>
+              }
+            </div>
+          </section>
+        }
+      </div>
+
+      <aside>
+        @if (exito()) {
+          <p class="notice success" role="status">{{ exito() }}</p>
+        }
+        @if (seleccion(); as c) {
+          <section class="panel" aria-labelledby="detalle-title">
+            <h2 id="detalle-title">Celda {{ c.codigo }}</h2>
+            <p class="muted">{{ nombreTipoCelda(c.tipo) }} · {{ estadoCelda(c) }}</p>
+            @if (c.ocupacion; as o) {
+              <dl class="facts">
+                <div>
+                  <dt>Placa</dt>
+                  <dd class="placa">{{ o.placa }}</dd>
+                </div>
+                <div>
+                  <dt>Tipo</dt>
+                  <dd>{{ nombreVehiculo(o.tipo_vehiculo) }}</dd>
+                </div>
+                <div>
+                  <dt>Ingreso</dt>
+                  <dd>{{ fecha(o.entrada) }}</dd>
+                </div>
+                <div>
+                  <dt>Puerta</dt>
+                  <dd>{{ o.puerta }}</dd>
+                </div>
+                <div>
+                  <dt>Recibo</dt>
+                  <dd>{{ o.numero_recibo }}</dd>
+                </div>
+                <div>
+                  <dt>Operador</dt>
+                  <dd>{{ o.operador }}</dd>
+                </div>
+              </dl>
+
+              @if (!cambiando()) {
+                <button type="button" class="cambiar" (click)="abrirCambio()">Cambiar celda</button>
+              } @else {
+                <form class="cambio" [formGroup]="form" (ngSubmit)="confirmarCambio()" novalidate>
+                  <h3>Cambiar celda de {{ o.placa }}</h3>
+                  <app-turno />
+                  <div class="field">
+                    <label for="destino">Celda nueva</label>
+                    <select id="destino" formControlName="celdaId">
+                      <option [ngValue]="0">Selecciona la celda</option>
+                      @for (d of destinos(); track d.id) {
+                        <option [ngValue]="d.id">{{ opcionDestino(d) }}</option>
+                      }
+                    </select>
+                    <span class="field-error">
+                      @if (form.controls.celdaId.touched && form.controls.celdaId.invalid) {
+                        Elige la celda donde está el vehículo.
+                      }
+                    </span>
+                  </div>
+                  <div class="field">
+                    <label for="motivo">Motivo</label>
+                    <textarea
+                      id="motivo"
+                      formControlName="motivo"
+                      rows="2"
+                      maxlength="300"
+                      placeholder="El conductor parqueó en otra celda"
+                      [attr.aria-invalid]="
+                        form.controls.motivo.touched && form.controls.motivo.invalid
+                      "
+                    ></textarea>
+                    <span class="field-error">
+                      @if (form.controls.motivo.touched && form.controls.motivo.invalid) {
+                        El motivo es obligatorio.
+                      }
+                    </span>
+                  </div>
+                  @if (destino(); as d) {
+                    @if (d.estado === 'OCUPADA') {
+                      <p class="notice warning">
+                        La celda {{ d.codigo }} figura ocupada por {{ d.ocupacion?.placa }}. Si ese
+                        vehículo está en realidad en la celda {{ c.codigo }}, intercambia las
+                        celdas.
+                      </p>
+                      <label class="check">
+                        <input type="checkbox" formControlName="intercambiar" />
+                        Intercambiar celdas {{ c.codigo }} ↔ {{ d.codigo }}
+                      </label>
+                    }
+                  }
+                  @if (error()) {
+                    <p class="notice error" role="alert">{{ error() }}</p>
+                  }
+                  <div class="actions">
+                    <button
+                      class="primary"
+                      type="submit"
+                      [disabled]="guardando() || !turnos.activo()"
+                    >
+                      {{ guardando() ? 'Guardando…' : 'Guardar cambio' }}
+                    </button>
+                    <button type="button" (click)="cerrarCambio()">Cancelar</button>
+                  </div>
+                </form>
+              }
+            } @else {
+              <p class="hint">La celda está libre.</p>
+            }
+          </section>
+        }
+
+        <section class="panel" aria-labelledby="actividad-title">
+          <h2 id="actividad-title">Actividad reciente</h2>
+          @if (!p.actividad.length) {
+            <p class="hint">Aún no hay movimientos.</p>
+          }
+          <ol class="actividad">
+            @for (a of p.actividad; track $index) {
+              <li>
+                <span class="badge" [class]="claseActividad(a.tipo)">{{
+                  nombreActividad(a.tipo)
+                }}</span>
+                <div>
+                  <strong>{{ a.placa }}</strong> · {{ a.detalle }}
+                  <small class="muted"
+                    >{{ fecha(a.fecha) }} · {{ a.puerta ?? 'Sin puerta' }} · {{ a.operador }}</small
+                  >
+                </div>
+              </li>
+            }
+          </ol>
+        </section>
+      </aside>
+    </div>
+  } @else if (sinConexion()) {
+    <p class="notice error" role="alert">
+      No se pudo cargar el estado de las celdas. Se reintentará automáticamente.
+    </p>
+  }
+</section>

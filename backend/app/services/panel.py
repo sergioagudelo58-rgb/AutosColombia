@@ -33,7 +33,7 @@ class ServicioPanel:
     @transaccion
     def panel(self) -> Panel:
         ahora = datetime.now(timezone.utc)
-        celdas = list(self.session.scalars(select(Celda).order_by(Celda.codigo)))
+        celdas = list(self.session.scalars(select(Celda).where(Celda.estado != "ELIMINADA").order_by(Celda.codigo)))
         abiertas = self.session.scalars(
             select(Estancia).options(joinedload(Estancia.vehiculo), joinedload(Estancia.puerta_entrada),
                                      joinedload(Estancia.operador_entrada))
@@ -61,9 +61,10 @@ class ServicioPanel:
                     puerta=estancia.puerta_entrada.nombre, operador=estancia.operador_entrada.nombre,
                 )
             estados.append(CeldaEstado(id=celda.id, codigo=celda.codigo, tipo=celda.tipo,
-                                       estado="OCUPADA" if estancia else "DISPONIBLE", reciente=reciente,
+                                       estado=("OCUPADA" if estancia else ("INHABILITADA" if celda.estado == "INHABILITADA" else "DISPONIBLE")),
+                                       reciente=reciente,
                                        ocupacion=ocupacion))
-        return Panel(generado_en=ahora, cupos=cupos_de(celdas, set(por_celda)), celdas=estados,
+        return Panel(generado_en=ahora, cupos=cupos_de([c for c in celdas if c.estado == "ACTIVA"], set(por_celda)), celdas=estados,
                      actividad=self._actividad())
 
     def _actividad(self) -> list[Actividad]:

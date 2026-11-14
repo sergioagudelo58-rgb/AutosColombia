@@ -40,7 +40,7 @@ class ServicioReporte:
         desde, hasta = desde or hasta or hoy, hasta or desde or hoy
         inicio, fin = rango_colombia(desde, hasta)
         por_tipo = dict(self.session.execute(select(Vehiculo.tipo, func.count()).group_by(Vehiculo.tipo)).all())
-        celdas = list(self.session.scalars(select(Celda)))
+        celdas = list(self.session.scalars(select(Celda).where(Celda.estado == "ACTIVA")))
         ocupadas = set(self.session.scalars(select(Estancia.celda_id).where(Estancia.salida.is_(None))))
         cupos = cupos_de(celdas, ocupadas)
         total = sum(c.total for c in cupos)
