@@ -2,7 +2,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
-import { TurnoService } from '../shared/turno.service';
+import { sesionDePrueba } from '../testing/auth';
 import { Salida, busquedaSalida, normalizarRecibo } from './salida';
 
 describe('Registrar salida', () => {
@@ -19,17 +19,17 @@ describe('Registrar salida', () => {
   beforeEach(() => {
     TestBed.configureTestingModule({
       imports: [Salida],
-      providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([])],
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideRouter([]),
+        sesionDePrueba('OPERADOR', { id: 2, nombre: 'Puerta 2' }),
+      ],
     });
     http = TestBed.inject(HttpTestingController);
-    TestBed.inject(TurnoService).iniciar({
-      operador: { id: 4, nombre: 'Laura' },
-      puerta: { id: 2, nombre: 'Puerta 2' },
-    });
     c = TestBed.createComponent(Salida).componentInstance;
   });
   afterEach(() => {
-    TestBed.inject(TurnoService).cerrar();
     http.verify();
   });
 
@@ -50,8 +50,6 @@ describe('Registrar salida', () => {
     expect(req.request.body).toEqual({
       placa: 'ABC123',
       numero_recibo: 'E-000003',
-      operador_id: 4,
-      puerta_id: 2,
     });
     req.flush({ ...estancia, abierta: false, salida: '2026-10-18T20:00:00Z' });
     expect(c.salida()?.celda.codigo).toBe('12');

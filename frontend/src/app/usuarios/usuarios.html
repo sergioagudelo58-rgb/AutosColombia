@@ -1,0 +1,323 @@
+<section class="ui" aria-labelledby="usuarios-title">
+  <header class="heading">
+    <div>
+      <span class="eyebrow">ADMINISTRACIÓN</span>
+      <h1 id="usuarios-title">Usuarios</h1>
+      <p>Crea el acceso de cada empleado, consulta quién está conectado y retira a quien se va.</p>
+    </div>
+    <button class="primary" type="button" (click)="nuevo()">Nuevo usuario</button>
+  </header>
+
+  <div class="kpis">
+    <div class="kpi">
+      <span>Usuarios en la lista</span><strong>{{ items().length }}</strong>
+    </div>
+    <div class="kpi">
+      <span>Activos</span><strong>{{ activos() }}</strong>
+    </div>
+    <div class="kpi">
+      <span>En línea ahora</span><strong>{{ enLinea() }}</strong
+      ><small>se actualiza cada 5 s</small>
+    </div>
+  </div>
+
+  @if (exito()) {
+    <p class="notice success" role="status">{{ exito() }}</p>
+  }
+  @if (temporal(); as t) {
+    <section class="panel temporal" aria-labelledby="temporal-title">
+      <h2 id="temporal-title">Contraseña temporal de {{ t.usuario }}</h2>
+      <p>Entrégala al empleado. <b>Solo se muestra esta vez</b>; al ingresar deberá cambiarla.</p>
+      <div class="actions">
+        <code class="clave">{{ t.contrasena_generada }}</code>
+        <button type="button" (click)="copiar(t.contrasena_generada)">Copiar</button>
+        <button type="button" (click)="temporal.set(null)">Ya la entregué</button>
+      </div>
+    </section>
+  }
+  @if (error() && !formulario() && !pendiente()) {
+    <p class="notice error" role="alert">{{ error() }}</p>
+  }
+
+  @if (formulario()) {
+    <section class="panel" aria-labelledby="form-title">
+      <h2 id="form-title">
+        {{
+          editando() ? 'Modificar a ' + editando()!.usuario : 'Crear usuario para un empleado nuevo'
+        }}
+      </h2>
+      <p class="hint">
+        @if (editando()) {
+          El nombre de usuario no se modifica. Cada cambio queda en la auditoría con el valor
+          anterior y el nuevo. Si cambias el perfil, su sesión abierta se cierra.
+        } @else {
+          El sistema genera una contraseña temporal que se muestra una sola vez.
+        }
+      </p>
+      <form [formGroup]="form" (ngSubmit)="guardar()" novalidate>
+        <fieldset [disabled]="guardando()">
+          <div class="form-grid">
+            <div class="field">
+              <label for="tipo_documento">Tipo de documento</label>
+              <select id="tipo_documento" formControlName="tipo_documento">
+                @for (t of tiposDocumento; track t) {
+                  <option [value]="t">{{ t }}</option>
+                }
+              </select>
+            </div>
+            <div class="field">
+              <label for="numero_documento">Número de documento</label>
+              <input
+                id="numero_documento"
+                formControlName="numero_documento"
+                [attr.aria-invalid]="invalido('numero_documento')"
+              />
+              <span class="field-error">{{
+                invalido('numero_documento') ? 'Obligatorio.' : ''
+              }}</span>
+            </div>
+            <div class="field">
+              <label for="fecha_ingreso">Fecha de ingreso</label>
+              <input id="fecha_ingreso" type="date" formControlName="fecha_ingreso" />
+            </div>
+            <div class="field">
+              <label for="nombres">Nombres</label>
+              <input
+                id="nombres"
+                formControlName="nombres"
+                [attr.aria-invalid]="invalido('nombres')"
+              />
+              <span class="field-error">{{ invalido('nombres') ? 'Obligatorio.' : '' }}</span>
+            </div>
+            <div class="field">
+              <label for="apellidos">Apellidos</label>
+              <input
+                id="apellidos"
+                formControlName="apellidos"
+                [attr.aria-invalid]="invalido('apellidos')"
+              />
+              <span class="field-error">{{ invalido('apellidos') ? 'Obligatorio.' : '' }}</span>
+            </div>
+            <div class="field">
+              <label for="telefono">Teléfono</label>
+              <input
+                id="telefono"
+                type="tel"
+                formControlName="telefono"
+                placeholder="3001234567"
+                [attr.aria-invalid]="invalido('telefono')"
+              />
+              <span class="field-error">{{ invalido('telefono') ? 'Obligatorio.' : '' }}</span>
+            </div>
+            <div class="field">
+              <label for="correo">Correo (opcional)</label>
+              <input id="correo" type="email" formControlName="correo" />
+            </div>
+            <div class="field">
+              <label for="usuario">Nombre de usuario</label>
+              <input
+                id="usuario"
+                formControlName="usuario"
+                placeholder="drios"
+                autocapitalize="none"
+                [attr.aria-invalid]="invalido('usuario')"
+              />
+              <span class="field-error">{{
+                invalido('usuario') ? '3 a 30 caracteres: letras, números, punto o guion bajo.' : ''
+              }}</span>
+            </div>
+            <div class="field">
+              <label for="rol">Perfil</label>
+              <select id="rol" formControlName="rol">
+                <option value="OPERADOR">Operador</option>
+                <option value="ADMINISTRADOR">Administrador</option>
+              </select>
+            </div>
+          </div>
+          @if (error()) {
+            <p class="notice error" role="alert">{{ error() }}</p>
+          }
+          <div class="actions">
+            <button class="primary" type="submit">
+              {{ guardando() ? 'Guardando…' : editando() ? 'Guardar cambios' : 'Crear usuario' }}
+            </button>
+            <button type="button" (click)="cancelar()">Cancelar</button>
+          </div>
+        </fieldset>
+      </form>
+    </section>
+  }
+
+  @if (pendiente(); as p) {
+    <section class="panel confirmacion" role="alertdialog" aria-labelledby="confirmar-title">
+      @switch (p.accion) {
+        @case ('retirar') {
+          <h2 id="confirmar-title">Retirar a {{ p.usuario.nombre }} ({{ p.usuario.usuario }})</h2>
+          <p>
+            Ya no podrá ingresar por ningún medio y su sesión abierta se cerrará. Sus registros se
+            conservan.
+          </p>
+          <form [formGroup]="retiro" class="form-grid" (ngSubmit)="confirmar()" novalidate>
+            <div class="field">
+              <label for="fecha_retiro">Fecha de retiro</label>
+              <input id="fecha_retiro" type="date" formControlName="fecha_retiro" />
+            </div>
+            <div class="field motivo">
+              <label for="motivo_retiro">Motivo</label>
+              <input
+                id="motivo_retiro"
+                formControlName="motivo"
+                maxlength="300"
+                placeholder="Terminó su contrato"
+                [attr.aria-invalid]="
+                  retiro.controls.motivo.touched && retiro.controls.motivo.invalid
+                "
+              />
+              <span class="field-error">{{
+                retiro.controls.motivo.touched && retiro.controls.motivo.invalid
+                  ? 'El motivo es obligatorio.'
+                  : ''
+              }}</span>
+            </div>
+          </form>
+        }
+        @case ('restablecer') {
+          <h2 id="confirmar-title">Restablecer la contraseña de {{ p.usuario.usuario }}</h2>
+          <p>Se genera una contraseña temporal nueva y se cierra su sesión abierta.</p>
+        }
+        @case ('cerrar') {
+          <h2 id="confirmar-title">Cerrar la sesión de {{ p.usuario.usuario }}</h2>
+          <p>Úsalo si el equipo quedó encendido o apagado sin cerrar sesión.</p>
+        }
+      }
+      @if (error()) {
+        <p class="notice error" role="alert">{{ error() }}</p>
+      }
+      <div class="actions">
+        <button
+          type="button"
+          [class.danger]="p.accion === 'retirar'"
+          [class.primary]="p.accion !== 'retirar'"
+          (click)="confirmar()"
+          [disabled]="guardando()"
+        >
+          {{ guardando() ? 'Procesando…' : 'Confirmar' }}
+        </button>
+        <button type="button" (click)="cancelar()">Cancelar</button>
+      </div>
+    </section>
+  }
+
+  <section class="panel" aria-labelledby="lista-title" [attr.aria-busy]="cargando()">
+    <div class="row-between">
+      <h2 id="lista-title">Empleados</h2>
+      <form class="filtros" [formGroup]="filtros" (ngSubmit)="buscar()" role="search">
+        <label class="sr-only" for="q">Buscar</label>
+        <input id="q" formControlName="q" placeholder="Usuario, nombre o documento" />
+        <label class="sr-only" for="f-estado">Estado</label>
+        <select id="f-estado" formControlName="estado" (change)="buscar()">
+          <option value="">Todos los estados</option>
+          <option value="ACTIVO">Activos</option>
+          <option value="RETIRADO">Retirados</option>
+        </select>
+        <label class="sr-only" for="f-rol">Perfil</label>
+        <select id="f-rol" formControlName="rol" (change)="buscar()">
+          <option value="">Todos los perfiles</option>
+          <option value="OPERADOR">Operadores</option>
+          <option value="ADMINISTRADOR">Administradores</option>
+        </select>
+        <button type="submit">Buscar</button>
+      </form>
+    </div>
+    @if (errorLista()) {
+      <p class="notice error" role="alert">{{ errorLista() }}</p>
+    } @else if (cargando() && !items().length) {
+      <p class="hint" role="status">Cargando usuarios…</p>
+    } @else if (!items().length) {
+      <p class="hint">No hay usuarios con esos filtros.</p>
+    } @else {
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">Usuario</th>
+              <th scope="col">Nombre</th>
+              <th scope="col">Perfil</th>
+              <th scope="col">Estado</th>
+              <th scope="col">Conexión</th>
+              <th scope="col">Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (u of items(); track u.id) {
+              <tr>
+                <th scope="row">{{ u.usuario }}</th>
+                <td>
+                  {{ u.nombre }}
+                  @if (u.estado === 'RETIRADO') {
+                    <div class="muted">
+                      Retirado el {{ dia(u.fecha_retiro) }}: {{ u.motivo_retiro }}
+                    </div>
+                  }
+                </td>
+                <td>{{ nombreRol[u.rol] }}</td>
+                <td>
+                  <span
+                    class="badge"
+                    [class.ok]="u.estado === 'ACTIVO'"
+                    [class.neutral]="u.estado !== 'ACTIVO'"
+                  >
+                    {{ u.estado === 'ACTIVO' ? 'Activo' : 'Retirado' }}
+                  </span>
+                  @if (u.bloqueado) {
+                    <span class="badge bad">Bloqueado</span>
+                  }
+                  @if (u.sin_contrasena) {
+                    <span
+                      class="badge warn"
+                      title="Creado antes de los usuarios: restablece su contraseña"
+                      >Sin contraseña</span
+                    >
+                  } @else if (u.contrasena_temporal && u.estado === 'ACTIVO') {
+                    <span class="badge warn">Temporal</span>
+                  }
+                </td>
+                <td>
+                  @if (u.en_linea) {
+                    <span class="badge ok">● En línea</span>
+                    <div class="muted">{{ u.puerta ?? 'Sin puerta' }}</div>
+                  } @else {
+                    <span class="muted">Última: {{ fecha(u.ultima_conexion) }}</span>
+                  }
+                </td>
+                <td>
+                  <div class="acciones">
+                    @if (u.estado === 'ACTIVO') {
+                      <button type="button" (click)="editar(u)">Modificar</button>
+                      <button type="button" (click)="pedir('restablecer', u)">
+                        Restablecer contraseña
+                      </button>
+                      @if (u.bloqueado) {
+                        <button type="button" (click)="desbloquear(u)">Desbloquear</button>
+                      }
+                      @if (u.en_linea && u.id !== auth.sesion()?.usuario_id) {
+                        <button type="button" (click)="pedir('cerrar', u)">Cerrar sesión</button>
+                      }
+                      @if (u.id !== auth.sesion()?.usuario_id) {
+                        <button type="button" class="peligro" (click)="pedir('retirar', u)">
+                          Retirar
+                        </button>
+                      }
+                    } @else {
+                      <button type="button" (click)="reactivar(u)">Reactivar</button>
+                    }
+                  </div>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+  </section>
+</section>

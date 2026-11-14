@@ -38,7 +38,7 @@ function placaORecibo(control: AbstractControl): ValidationErrors | null {
     : { busqueda: true };
 }
 
-/** RF-07: salida por placa o recibo, con el operador y la puerta del turno. */
+/** RF-07: salida por placa o recibo; el usuario y la puerta salen de la sesión. */
 @Component({
   selector: 'app-salida',
   imports: [ReactiveFormsModule, TurnoComponent],
@@ -115,8 +115,6 @@ export class Salida {
       .salida({
         placa: registro.placa,
         numero_recibo: registro.numero_recibo,
-        operador_id: turno.operador.id,
-        puerta_id: turno.puerta.id,
       })
       .pipe(takeUntilDestroyed(this.destroy))
       .subscribe({

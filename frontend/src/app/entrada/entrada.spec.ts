@@ -3,7 +3,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { ConsultaVehiculo, Movimiento } from '../models/estancia';
-import { TurnoService } from '../shared/turno.service';
+import { sesionDePrueba } from '../testing/auth';
 import { Entrada } from './entrada';
 
 const consulta: ConsultaVehiculo = {
@@ -66,7 +66,7 @@ const movimiento: Movimiento = {
   abierta: true,
   puerta_entrada: { id: 2, nombre: 'Puerta 2' },
   puerta_salida: null,
-  operador_entrada: { id: 4, nombre: 'Laura' },
+  operador_entrada: { id: 4, nombre: 'Laura', usuario: 'lgomez' },
   operador_salida: null,
 };
 
@@ -77,17 +77,17 @@ describe('Registrar entrada', () => {
   beforeEach(() => {
     TestBed.configureTestingModule({
       imports: [Entrada],
-      providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([])],
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideRouter([]),
+        sesionDePrueba('OPERADOR', { id: 2, nombre: 'Puerta 2' }),
+      ],
     });
     http = TestBed.inject(HttpTestingController);
-    TestBed.inject(TurnoService).iniciar({
-      operador: { id: 4, nombre: 'Laura' },
-      puerta: { id: 2, nombre: 'Puerta 2' },
-    });
     c = TestBed.createComponent(Entrada).componentInstance;
   });
   afterEach(() => {
-    TestBed.inject(TurnoService).cerrar();
     http.verify();
   });
 
@@ -99,7 +99,8 @@ describe('Registrar entrada', () => {
     c.confirmar();
     c.confirmar();
     const req = http.expectOne('/estancias/entrada');
-    expect(req.request.body).toEqual({ placa: 'KDT482', operador_id: 4, puerta_id: 2 });
+    // RF-08: el usuario y la puerta no se envían; el servidor los toma de la sesión.
+    expect(req.request.body).toEqual({ placa: 'KDT482' });
     req.flush(movimiento);
     expect(c.ingreso()?.numero_recibo).toBe('E-000245');
     expect(c.ingreso()?.celda.codigo).toBe('25');

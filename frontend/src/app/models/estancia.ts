@@ -9,24 +9,21 @@ export interface Puerta {
 export interface OperadorResumen {
   id: number;
   nombre: string;
+  usuario: string;
 }
+/** El usuario y la puerta los toma el servidor de la sesión (RF-01, RF-03); no se envían. */
 export interface EntradaCrear {
   placa: string;
-  operador_id: number;
-  puerta_id: number;
 }
-/** RF-07: placa o número de recibo (o ambos, que el servidor verifica) y la puerta de salida. */
+/** Placa o número de recibo (o ambos, que el servidor verifica). */
 export interface SalidaCrear {
   placa?: string;
   numero_recibo?: string;
-  operador_id: number;
-  puerta_id: number;
 }
 /** RF-09: cambio de celda de un ingreso abierto; intercambiar solo si la celda nueva está ocupada. */
 export interface CambioCeldaCrear {
   celda_id: number;
   motivo: string;
-  operador_id: number;
   intercambiar: boolean;
 }
 export interface Novedad {

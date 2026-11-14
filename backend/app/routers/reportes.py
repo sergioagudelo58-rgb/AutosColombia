@@ -4,11 +4,12 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
+from app.auth import solo_admin
 from app.database import get_session
 from app.schemas.reporte import HistorialPagina, ReporteOcupacion
 from app.services.reporte import ServicioReporte
 
-router = APIRouter(prefix="/reportes", tags=["Reportes"])
+router = APIRouter(prefix="/reportes", tags=["Reportes"], dependencies=[Depends(solo_admin)])
 DatabaseSession = Annotated[Session, Depends(get_session)]
 Fecha = Annotated[date | None, Query(description="Día calendario de Colombia (AAAA-MM-DD)")]
 

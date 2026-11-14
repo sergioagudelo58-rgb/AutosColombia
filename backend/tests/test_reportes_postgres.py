@@ -1,6 +1,6 @@
 """RF-07 a RF-11 contra PostgreSQL real, con los datos temporales del fixture `datos`.
 
-Requiere RUN_POSTGRES_TESTS=1 y la base autos_colombia en la revisión 0006.
+Requiere RUN_POSTGRES_TESTS=1 y la base autos_colombia en la revisión 0007.
 """
 from fastapi.testclient import TestClient
 import pytest
@@ -10,7 +10,7 @@ from app.database import get_engine
 from app.main import app
 from app.models import Cliente
 from app.services.mensualidad import hoy_colombia
-from test_estancias_postgres import abiertas, datos, entrada, pytestmark  # noqa: F401  (fixture compartido)
+from test_estancias_postgres import abiertas, como, datos, entrada, pytestmark  # noqa: F401  (fixture compartido)
 
 
 def libres(client, tipo):
@@ -24,8 +24,8 @@ def celda_en_panel(client, celda_id):
 def test_salida_por_recibo_verifica_placa_y_guarda_puerta(datos):
     d = datos
     with TestClient(app) as client:
-        carro = client.post('/estancias/entrada', json=entrada(d)).json()
-        moto = client.post('/estancias/entrada', json=entrada(d, 'moto')).json()
+        carro = client.post('/estancias/entrada', **entrada(d)).json()
+        moto = client.post('/estancias/entrada', **entrada(d, 'moto')).json()
         abierta = client.get('/estancias/abierta', params={'recibo': carro['numero_recibo'].replace('-', '').lower()})
         assert abierta.status_code == 200 and abierta.json()['placa'] == d['placa']['carro']
         sin_ingreso = client.get('/estancias/abierta', params={'placa': d['placa']['camioneta']})
@@ -33,18 +33,15 @@ def test_salida_por_recibo_verifica_placa_y_guarda_puerta(datos):
 
         # HU-07 criterio 3: el recibo de otro vehículo no cierra nada.
         cruzado = client.post('/estancias/salida', json={'placa': d['placa']['carro'],
-                                                         'numero_recibo': moto['numero_recibo'],
-                                                         'operador_id': d['o'][0], 'puerta_id': 2})
+                                                         'numero_recibo': moto['numero_recibo']}, headers=como(d, 0, 2))
         assert cruzado.status_code == 409 and 'no corresponde' in cruzado.json()['detail']
         assert abiertas(d) == 2
 
-        salida = client.post('/estancias/salida', json={'numero_recibo': carro['numero_recibo'],
-                                                        'operador_id': d['o'][1], 'puerta_id': 2})
+        salida = client.post('/estancias/salida', json={'numero_recibo': carro['numero_recibo']}, headers=como(d, 1, 2))
         body = salida.json()
         assert salida.status_code == 200 and not body['abierta']
         assert body['puerta_salida']['id'] == 2 and body['operador_salida']['id'] == d['o'][1]
-        repetida = client.post('/estancias/salida', json={'numero_recibo': carro['numero_recibo'],
-                                                          'operador_id': d['o'][1], 'puerta_id': 2})
+        repetida = client.post('/estancias/salida', json={'numero_recibo': carro['numero_recibo']}, headers=como(d, 1, 2))
         assert repetida.status_code == 409 and 'ingreso abierto' in repetida.json()['detail']
         assert celda_en_panel(client, carro['celda']['id'])['estado'] == 'DISPONIBLE'
 
@@ -52,19 +49,19 @@ def test_salida_por_recibo_verifica_placa_y_guarda_puerta(datos):
 def test_cambio_e_intercambio_de_celda(datos):
     d = datos
     with TestClient(app) as client:
-        carro = client.post('/estancias/entrada', json=entrada(d)).json()
-        camioneta = client.post('/estancias/entrada', json=entrada(d, 'camioneta', o=1)).json()
+        carro = client.post('/estancias/entrada', **entrada(d)).json()
+        camioneta = client.post('/estancias/entrada', **entrada(d, 'camioneta', o=1)).json()
         assert celda_en_panel(client, carro['celda']['id'])['reciente']
         destino = libres(client, 'CARRO_CAMIONETA')[0]
         url = f"/estancias/{carro['id']}/celda"
         moto = libres(client, 'MOTO')
         if moto:
-            otro_tipo = client.post(url, json={'celda_id': moto[0]['id'], 'motivo': 'x', 'operador_id': d['o'][0]})
+            otro_tipo = client.post(url, json={'celda_id': moto[0]['id'], 'motivo': 'x'}, headers=como(d, 0))
             assert otro_tipo.status_code == 409 and 'es para motos' in otro_tipo.json()['detail']
 
         # (a) El conductor parqueó en otra celda libre: cambio simple con novedad.
         motivo = f"El conductor parqueó en la {destino['codigo']}"
-        simple = client.post(url, json={'celda_id': destino['id'], 'motivo': motivo, 'operador_id': d['o'][0]})
+        simple = client.post(url, json={'celda_id': destino['id'], 'motivo': motivo}, headers=como(d, 0))
         assert simple.status_code == 200
         estancia = simple.json()['estancia']
         assert estancia['celda']['id'] == destino['id'] and simple.json()['intercambio'] is None
@@ -77,10 +74,10 @@ def test_cambio_e_intercambio_de_celda(datos):
 
         # (b) La celda elegida figura ocupada: solo con «Intercambiar celdas».
         url = f"/estancias/{camioneta['id']}/celda"
-        cambio = {'celda_id': destino['id'], 'motivo': 'Celda asignada ocupada', 'operador_id': d['o'][1]}
-        ocupada = client.post(url, json=cambio)
+        cambio = {'celda_id': destino['id'], 'motivo': 'Celda asignada ocupada'}
+        ocupada = client.post(url, json=cambio, headers=como(d, 1))
         assert ocupada.status_code == 409 and 'Intercambiar celdas' in ocupada.json()['detail']
-        swap = client.post(url, json={**cambio, 'intercambiar': True})
+        swap = client.post(url, json={**cambio, 'intercambiar': True}, headers=como(d, 1))
         assert swap.status_code == 200
         assert swap.json()['estancia']['celda']['id'] == destino['id']
         assert swap.json()['intercambio']['celda']['id'] == camioneta['celda']['id']
@@ -100,7 +97,7 @@ def test_reporte_de_ocupacion_e_historial(datos):
         antes = client.get('/reportes/ocupacion').json()
         assert antes['desde'] == antes['hasta'] == hoy_colombia().isoformat()
         assert set(antes['vehiculos_por_tipo']) == {'MOTO', 'CARRO', 'CAMIONETA'}
-        client.post('/estancias/entrada', json=entrada(d))
+        client.post('/estancias/entrada', **entrada(d))
         despues = client.get('/reportes/ocupacion').json()
         assert despues['entradas'] >= antes['entradas'] + 1
         panel = client.get('/panel').json()
