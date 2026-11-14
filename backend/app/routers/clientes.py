@@ -15,7 +15,7 @@ ClientId = Annotated[int, Path(ge=1, le=9223372036854775807)]
 
 @router.post("", response_model=ClienteDetalle, status_code=201)
 def create(data: ClienteCrear, actor: SesionActual, session: DatabaseSession):
-    return service.create_client(session, data)
+    return service.create_client(session, data, actor)
 
 
 @router.get("", response_model=ClientesPagina)
@@ -36,4 +36,4 @@ def get_one(id: ClientId, actor: SesionActual, session: DatabaseSession):
 
 @router.patch("/{id}", response_model=ClienteDetalle)
 def update(id: ClientId, data: ClienteActualizar, actor: Administrador, session: DatabaseSession):
-    return service.update_client(session, id, data)
+    return service.update_client(session, id, data, actor)

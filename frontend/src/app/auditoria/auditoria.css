@@ -1,0 +1,28 @@
+.filtros {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+}
+.filtros .field {
+  min-width: 150px;
+}
+.cambio {
+  margin-top: 6px;
+}
+.valores {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.valores pre {
+  margin: 4px 0 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12px;
+}
+@media (max-width: 560px) {
+  .valores {
+    grid-template-columns: 1fr;
+  }
+}

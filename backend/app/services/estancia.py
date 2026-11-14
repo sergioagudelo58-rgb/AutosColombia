@@ -20,6 +20,7 @@ from app.schemas.estancia import (
     NovedadRespuesta, OperadorResumen, PuertaRespuesta, SalidaCrear,
 )
 from app.schemas.vehiculo import VehiculoRespuesta
+from app.services.auditoria import registrar as auditar
 from app.services.mensualidad import evaluar_mensualidad, hoy_colombia
 
 NOMBRE_CUPO = {"CARRO_CAMIONETA": "carros y camionetas", "MOTO": "motos"}
@@ -141,7 +142,10 @@ class ServicioEstancia:
         return movimiento(estancia)
 
     def _cupos(self) -> list[Cupo]:
-        totales = dict(self.session.execute(select(Celda.tipo, func.count()).group_by(Celda.tipo)).all())
+        # RF-14 / RF-15: las celdas inhabilitadas o eliminadas no cuentan en el cupo.
+        totales = dict(self.session.execute(
+            select(Celda.tipo, func.count()).where(Celda.estado == "ACTIVA").group_by(Celda.tipo)
+        ).all())
         ocupadas = dict(self.session.execute(
             select(Celda.tipo, func.count()).join(Estancia, Estancia.celda_id == Celda.id)
             .where(_abierta()).group_by(Celda.tipo)
@@ -161,7 +165,7 @@ class ServicioEstancia:
         descartadas: list[int] = []
         while True:
             ocupada = exists().where(Estancia.celda_id == Celda.id, _abierta())
-            consulta = (select(Celda).where(Celda.tipo == tipo_celda, ~ocupada)
+            consulta = (select(Celda).where(Celda.tipo == tipo_celda, Celda.estado == "ACTIVA", ~ocupada)
                         .order_by(Celda.codigo).limit(1).with_for_update(skip_locked=True))
             if descartadas:
                 consulta = consulta.where(Celda.id.not_in(descartadas))
@@ -234,6 +238,10 @@ class ServicioEstancia:
                             puerta_entrada_id=puerta.id, entrada=datetime.now(timezone.utc))
         self.session.add(estancia)
         self.session.flush()
+        auditar(self.session, accion="INGRESO", entidad="estancia", entidad_id=estancia.id, placa=vehiculo.placa,
+                actor=actor, puerta=puerta.nombre,
+                nuevo={"recibo": f"E-{estancia.id:06d}", "celda": celda.codigo, "tipo_vehiculo": vehiculo.tipo,
+                       "entrada": estancia.entrada.isoformat()})
         return self._detalle(estancia.id)
 
     # ---------- RF-07 ----------
@@ -282,6 +290,10 @@ class ServicioEstancia:
         except ValueError:
             raise EstanciaError(409, "No se puede cerrar la estancia con su estado o fecha actuales.") from None
         self.session.flush()
+        auditar(self.session, accion="SALIDA", entidad="estancia", entidad_id=estancia.id,
+                placa=estancia.vehiculo.placa, actor=actor, puerta=puerta.nombre,
+                anterior={"salida": None},
+                nuevo={"salida": estancia.salida.isoformat(), "celda": estancia.celda.codigo})
         return self._detalle(estancia.id)
 
     # ---------- RF-09 ----------
@@ -304,6 +316,11 @@ class ServicioEstancia:
         nueva = celdas.get(data.celda_id)
         if nueva is None:
             raise EstanciaError(404, "Celda no encontrada.")
+        if nueva.estado != "ACTIVA":
+            raise EstanciaError(
+                409, f"La celda {nueva.codigo} está {'inhabilitada' if nueva.estado == 'INHABILITADA' else 'eliminada'}. "
+                     "Elige otra."
+            )
         anterior = celdas[estancia.celda_id]
         vehiculo = self.session.get(Vehiculo, estancia.vehiculo_id)
         requerido = tipo_celda_para(vehiculo.tipo)
@@ -335,6 +352,14 @@ class ServicioEstancia:
                 Novedad(estancia_id=otra.id, celda_anterior_id=nueva.id, celda_nueva_id=anterior.id,
                         motivo=f"{data.motivo} (intercambio con {vehiculo.placa})", operador_id=operador.id),
             ])
+        auditar(self.session, accion="CAMBIO_CELDA", entidad="estancia", entidad_id=estancia.id,
+                placa=vehiculo.placa, actor=actor,
+                anterior={"celda": anterior.codigo}, nuevo={"celda": nueva.codigo}, motivo=data.motivo)
+        if otra is not None:
+            auditar(self.session, accion="CAMBIO_CELDA", entidad="estancia", entidad_id=otra.id,
+                    placa=placa_otra, actor=actor,
+                    anterior={"celda": nueva.codigo}, nuevo={"celda": anterior.codigo},
+                    motivo=f"{data.motivo} (intercambio con {vehiculo.placa})")
         self.session.flush()
         return CambioCeldaRespuesta(
             estancia=self._detalle(estancia.id),

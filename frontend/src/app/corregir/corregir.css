@@ -1,0 +1,17 @@
+.corregir {
+  border-color: #d4a899;
+  background: #fffaf7;
+}
+.corregir fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+.motivo {
+  grid-column: span 2;
+}
+@media (max-width: 480px) {
+  .motivo {
+    grid-column: auto;
+  }
+}

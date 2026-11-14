@@ -8,6 +8,8 @@ import { NOMBRE_TIPO } from '../models/vehiculo';
 import { ReportesService } from '../services/reportes.service';
 import { fechaDia, fechaHora, hoyColombia, mensajeError } from '../shared/formato';
 import { AuthService } from '../auth/auth.service';
+import { CorregirRegistro } from '../corregir/corregir';
+import { Movimiento } from '../models/estancia';
 
 export const TAMANO_PAGINA = 20;
 
@@ -21,7 +23,7 @@ function celdaCsv(valor: string | number): string {
 /** RF-10 (reporte de ocupación) y RF-11 (historial de movimientos). */
 @Component({
   selector: 'app-reportes',
-  imports: [ReactiveFormsModule],
+  imports: [ReactiveFormsModule, CorregirRegistro],
   templateUrl: './reportes.html',
   styleUrl: './reportes.css',
 })
@@ -32,6 +34,8 @@ export class Reportes {
   private readonly fb = inject(FormBuilder).nonNullable;
 
   readonly pestana = signal<'ocupacion' | 'historial'>('ocupacion');
+  /** RF-09: registro del historial que el administrador está corrigiendo. */
+  readonly corregir = signal<Movimiento | null>(null);
   readonly fecha = fechaHora;
   readonly dia = fechaDia;
 
@@ -50,6 +54,11 @@ export class Reportes {
 
   constructor() {
     this.generar();
+  }
+
+  corregido(): void {
+    this.corregir.set(null);
+    this.pagina(this.historial()?.offset ?? 0);
   }
 
   usuario(): string {

@@ -1,0 +1,136 @@
+<section class="ui" aria-labelledby="auditoria-title">
+  <header class="heading">
+    <div>
+      <span class="eyebrow">ADMINISTRACIÓN</span>
+      <h1 id="auditoria-title">Auditoría</h1>
+      <p>
+        Quién hizo qué, cuándo y desde qué puerta. Los registros no se pueden modificar ni borrar.
+      </p>
+    </div>
+  </header>
+
+  <form class="panel filtros" [formGroup]="filtros" (ngSubmit)="buscar()" novalidate>
+    <div class="field">
+      <label for="a-usuario">Usuario</label>
+      <input id="a-usuario" formControlName="usuario" maxlength="100" placeholder="admin" />
+    </div>
+    <div class="field">
+      <label for="a-accion">Acción</label>
+      <input
+        id="a-accion"
+        formControlName="accion"
+        maxlength="60"
+        list="lista-acciones"
+        placeholder="INGRESO"
+      />
+      <datalist id="lista-acciones">
+        @for (a of acciones; track a) {
+          <option [value]="a"></option>
+        }
+      </datalist>
+    </div>
+    <div class="field">
+      <label for="a-placa">Placa</label>
+      <input id="a-placa" formControlName="placa" maxlength="10" placeholder="KDT482" />
+    </div>
+    <div class="field">
+      <label for="a-desde">Desde</label>
+      <input id="a-desde" type="date" formControlName="desde" />
+    </div>
+    <div class="field">
+      <label for="a-hasta">Hasta</label>
+      <input id="a-hasta" type="date" formControlName="hasta" />
+    </div>
+    <div class="actions">
+      <button class="primary" type="submit" [disabled]="buscando()">
+        {{ buscando() ? 'Buscando…' : 'Buscar' }}
+      </button>
+      <button type="button" (click)="limpiar()">Limpiar</button>
+    </div>
+  </form>
+
+  @if (error()) {
+    <p class="notice error" role="alert">{{ error() }}</p>
+  }
+
+  @if (pagina(); as p) {
+    <section class="panel" aria-labelledby="registros-title">
+      <div class="row-between">
+        <h2 id="registros-title">Registros</h2>
+        <span class="muted">{{ p.total }} {{ p.total === 1 ? 'registro' : 'registros' }}</span>
+      </div>
+      @if (!p.items.length) {
+        <p class="hint">No hay registros con esos filtros.</p>
+      } @else {
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">Fecha</th>
+                <th scope="col">Usuario</th>
+                <th scope="col">Acción</th>
+                <th scope="col">Placa</th>
+                <th scope="col">Detalle</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (r of p.items; track r.id) {
+                <tr>
+                  <td>{{ fecha(r.fecha) }}</td>
+                  <td>
+                    <b>{{ r.usuario ?? '—' }}</b><br />
+                    <span class="muted"
+                      >{{ r.rol ?? '' }}{{ r.puerta ? ' · ' + r.puerta : '' }}</span
+                    >
+                  </td>
+                  <td>
+                    <span class="badge">{{ nombreAccion(r.accion) }}</span>
+                  </td>
+                  <td>{{ r.placa ?? '—' }}</td>
+                  <td>
+                    {{ r.detalle }}
+                    @if (r.motivo) {
+                      <br /><span class="muted">Motivo: {{ r.motivo }}</span>
+                    }
+                    @if (r.valor_anterior || r.valor_nuevo) {
+                      <details class="cambio">
+                        <summary>Ver valor anterior y nuevo</summary>
+                        <div class="valores">
+                          <div>
+                            <b>Anterior</b>
+                            <pre>{{ json(r.valor_anterior) }}</pre>
+                          </div>
+                          <div>
+                            <b>Nuevo</b>
+                            <pre>{{ json(r.valor_nuevo) }}</pre>
+                          </div>
+                        </div>
+                      </details>
+                    }
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+        <div class="actions paginacion">
+          <button
+            type="button"
+            [disabled]="buscando() || p.offset === 0"
+            (click)="cargar(p.offset - p.limit)"
+          >
+            Anterior
+          </button>
+          <span class="muted">{{ p.offset + 1 }}–{{ p.offset + p.items.length }} de {{ p.total }}</span>
+          <button
+            type="button"
+            [disabled]="buscando() || p.offset + p.limit >= p.total"
+            (click)="cargar(p.offset + p.limit)"
+          >
+            Siguiente
+          </button>
+        </div>
+      }
+    </section>
+  }
+</section>

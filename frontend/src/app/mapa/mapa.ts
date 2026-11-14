@@ -67,7 +67,7 @@ export class Mapa {
   readonly destinos = computed(() => {
     const actual = this.seleccion();
     if (!actual) return [];
-    return (this.panel()?.celdas ?? []).filter((c) => c.tipo === actual.tipo && c.id !== actual.id);
+    return (this.panel()?.celdas ?? []).filter((c) => c.tipo === actual.tipo && c.id !== actual.id && c.estado !== 'INHABILITADA');
   });
   readonly destino = computed(() => this.destinos().find((c) => c.id === this.destinoId()) ?? null);
 
@@ -104,6 +104,7 @@ export class Mapa {
   }
 
   estadoCelda(c: CeldaEstado): string {
+    if (c.estado === 'INHABILITADA') return 'Inhabilitada';
     if (c.estado === 'DISPONIBLE') return 'Disponible';
     return c.reciente ? 'Recién asignada' : 'Ocupada';
   }

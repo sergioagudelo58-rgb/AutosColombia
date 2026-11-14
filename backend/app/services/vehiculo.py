@@ -4,7 +4,9 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from app.auditoria import Actor
 from app.models import Vehiculo
+from app.services.auditoria import registrar as auditar
 from app.schemas.vehiculo import VehiculoActualizar, VehiculoCrear
 
 
@@ -47,9 +49,12 @@ def find_vehicle(session: Session, vehicle_id: int) -> Vehiculo:
 
 
 @database_operation
-def create_vehicle(session: Session, data: VehiculoCrear) -> Vehiculo:
+def create_vehicle(session: Session, data: VehiculoCrear, actor: Actor) -> Vehiculo:
     vehicle = Vehiculo(**data.model_dump())
     session.add(vehicle)
+    session.flush()
+    auditar(session, accion="VEHICULO_CREADO", entidad="vehiculo", entidad_id=vehicle.id, placa=vehicle.placa,
+            actor=actor, nuevo=data.model_dump())
     session.commit()
     session.refresh(vehicle)
     return vehicle
@@ -68,9 +73,15 @@ def get_vehicle(session: Session, vehicle_id: int) -> Vehiculo:
 
 
 @database_operation
-def update_vehicle(session: Session, vehicle_id: int, data: VehiculoActualizar) -> Vehiculo:
+def update_vehicle(session: Session, vehicle_id: int, data: VehiculoActualizar, actor: Actor) -> Vehiculo:
     vehicle = find_vehicle(session, vehicle_id)
-    for key, value in data.model_dump(exclude_unset=True).items():
+    cambios_dict = data.model_dump(exclude_unset=True)
+    anterior = {k: getattr(vehicle, k) for k, v in cambios_dict.items() if getattr(vehicle, k) != v}
+    if anterior:
+        auditar(session, accion="VEHICULO_MODIFICADO", entidad="vehiculo", entidad_id=vehicle.id,
+                placa=vehicle.placa, actor=actor, anterior=anterior,
+                nuevo={k: cambios_dict[k] for k in anterior})
+    for key, value in cambios_dict.items():
         setattr(vehicle, key, value)
     session.commit()
     session.refresh(vehicle)
@@ -78,7 +89,9 @@ def update_vehicle(session: Session, vehicle_id: int, data: VehiculoActualizar) 
 
 
 @database_operation
-def delete_vehicle(session: Session, vehicle_id: int) -> None:
+def delete_vehicle(session: Session, vehicle_id: int, actor: Actor) -> None:
     vehicle = find_vehicle(session, vehicle_id)
+    auditar(session, accion="VEHICULO_ELIMINADO", entidad="vehiculo", entidad_id=vehicle.id, placa=vehicle.placa,
+            actor=actor, anterior={"placa": vehicle.placa, "tipo": vehicle.tipo})
     session.delete(vehicle)
     session.commit()
