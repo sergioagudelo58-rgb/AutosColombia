@@ -6,7 +6,9 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, selectinload
 
+from app.auditoria import Actor
 from app.models import Cliente
+from app.services.auditoria import registrar as auditar
 from app.schemas.cliente import ClienteActualizar, ClienteCrear
 
 
@@ -48,13 +50,16 @@ def find_client(session: Session, client_id: int) -> Cliente:
 
 
 @database_operation
-def create_client(session: Session, data: ClienteCrear) -> Cliente:
+def create_client(session: Session, data: ClienteCrear, actor: Actor) -> Cliente:
     existing = session.scalar(select(Cliente.id).where(Cliente.numero_documento == data.numero_documento))
     if existing is not None:
         # HU-01 criterio 2: se informa y se devuelve el id para abrir su información.
         raise ClienteError(409, "El cliente ya está registrado.", existing)
     client = Cliente(**data.model_dump())
     session.add(client)
+    session.flush()
+    auditar(session, accion="CLIENTE_CREADO", entidad="cliente", entidad_id=client.id, actor=actor,
+            nuevo=data.model_dump())
     session.commit()
     return find_client(session, client.id)
 
@@ -78,9 +83,14 @@ def get_client(session: Session, client_id: int) -> Cliente:
 
 
 @database_operation
-def update_client(session: Session, client_id: int, data: ClienteActualizar) -> Cliente:
+def update_client(session: Session, client_id: int, data: ClienteActualizar, actor: Actor) -> Cliente:
     client = find_client(session, client_id)
-    for key, value in data.model_dump(exclude_unset=True).items():
+    cambios_dict = data.model_dump(exclude_unset=True)
+    anterior = {k: getattr(client, k) for k, v in cambios_dict.items() if getattr(client, k) != v}
+    if anterior:
+        auditar(session, accion="CLIENTE_MODIFICADO", entidad="cliente", entidad_id=client.id, actor=actor,
+                anterior=anterior, nuevo={k: cambios_dict[k] for k in anterior})
+    for key, value in cambios_dict.items():
         setattr(client, key, value)
     session.commit()
     return find_client(session, client_id)

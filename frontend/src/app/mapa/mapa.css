@@ -125,3 +125,14 @@
   display: block;
   margin-top: 2px;
 }
+
+/* RF-14: celda inhabilitada */
+.mapa .celda.inhabilitada {
+  background: #ececec;
+  color: #6b6b6b;
+  border: 1px dashed #999;
+}
+.leyenda .muestra.inhabilitada {
+  background: #ececec;
+  border: 1px dashed #999;
+}

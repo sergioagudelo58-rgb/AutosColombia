@@ -15,7 +15,7 @@ VehicleId = Annotated[int, Path(ge=1, le=9223372036854775807)]
 
 @router.post("", response_model=VehiculoRespuesta, status_code=201)
 def create(data: VehiculoCrear, actor: SesionActual, session: DatabaseSession):
-    return service.create_vehicle(session, data)
+    return service.create_vehicle(session, data, actor)
 
 
 @router.get("", response_model=VehiculosPagina)
@@ -35,10 +35,10 @@ def get_one(id: VehicleId, actor: SesionActual, session: DatabaseSession):
 
 @router.patch("/{id}", response_model=VehiculoRespuesta)
 def update(id: VehicleId, data: VehiculoActualizar, actor: Administrador, session: DatabaseSession):
-    return service.update_vehicle(session, id, data)
+    return service.update_vehicle(session, id, data, actor)
 
 
 @router.delete("/{id}", status_code=204)
 def delete(id: VehicleId, actor: Administrador, session: DatabaseSession) -> Response:
-    service.delete_vehicle(session, id)
+    service.delete_vehicle(session, id, actor)
     return Response(status_code=204)

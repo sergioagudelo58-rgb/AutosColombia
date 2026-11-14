@@ -1,0 +1,48 @@
+<form class="panel corregir" [formGroup]="form" (ngSubmit)="guardar()" novalidate>
+  <h3>Corregir el recibo {{ movimiento().numero_recibo }} · {{ movimiento().placa }}</h3>
+  <p class="hint">
+    Solo el administrador corrige. El cambio queda en la auditoría con el valor anterior, el nuevo
+    y el motivo. Las fechas son hora de Colombia.
+  </p>
+  <fieldset [disabled]="guardando()">
+    <div class="form-grid">
+      <div class="field">
+        <label for="c-entrada">Entrada</label>
+        <input id="c-entrada" type="datetime-local" formControlName="entrada" />
+      </div>
+      @if (!movimiento().abierta) {
+        @if (!form.controls.anular.value) {
+          <div class="field">
+            <label for="c-salida">Salida</label>
+            <input id="c-salida" type="datetime-local" formControlName="salida" />
+          </div>
+        }
+        <label class="check">
+          <input type="checkbox" formControlName="anular" />
+          Anular la salida (el vehículo vuelve a quedar dentro)
+        </label>
+      }
+      <div class="field motivo">
+        <label for="c-motivo">Motivo</label>
+        <textarea
+          id="c-motivo"
+          formControlName="motivo"
+          rows="2"
+          maxlength="300"
+          placeholder="Error de digitación de la hora"
+          [attr.aria-invalid]="invalido('motivo')"
+        ></textarea>
+        <span class="field-error">{{ invalido('motivo') ? 'El motivo es obligatorio.' : '' }}</span>
+      </div>
+    </div>
+  </fieldset>
+  @if (error()) {
+    <p class="notice error" role="alert">{{ error() }}</p>
+  }
+  <div class="actions">
+    <button class="primary" type="submit" [disabled]="guardando()">
+      {{ guardando() ? 'Guardando…' : 'Guardar corrección' }}
+    </button>
+    <button type="button" (click)="cancelar.emit()">Cancelar</button>
+  </div>
+</form>

@@ -55,6 +55,11 @@ export const routes: Routes = [
         canActivateChild: [soloAdmin],
         children: [
           {
+            path: 'auditoria',
+            title: 'Auditoría | Autos Colombia',
+            loadComponent: () => import('./auditoria/auditoria').then((m) => m.Auditoria),
+          },
+          {
             path: 'usuarios',
             title: 'Usuarios | Autos Colombia',
             loadComponent: () => import('./usuarios/usuarios').then((m) => m.Usuarios),

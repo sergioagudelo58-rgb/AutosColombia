@@ -1,4 +1,4 @@
-"""Modelos iniciales. Importar este módulo no crea tablas ni abre conexiones."""
+﻿"""Modelos iniciales. Importar este módulo no crea tablas ni abre conexiones."""
 
 from datetime import date, datetime, timezone
 
@@ -11,6 +11,8 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship,
 
 TIPOS_VEHICULO = ("MOTO", "CARRO", "CAMIONETA")
 TIPOS_CELDA = ("CARRO_CAMIONETA", "MOTO")
+# Estado guardado de la celda (RF-14, RF-15). "Ocupada" no se guarda: se calcula con la estancia abierta.
+ESTADOS_CELDA = ("ACTIVA", "INHABILITADA", "ELIMINADA")
 TIPOS_DOCUMENTO = ("CC", "CE", "TI", "PA", "NIT")
 DIAS_MENSUALIDAD = 30
 TELEFONO_COLOMBIANO = "^(3[0-9]{9}|60[1-8][0-9]{7})$"
@@ -126,11 +128,19 @@ class Celda(Base):
         CheckConstraint("codigo ~ '[^[:space:]]'", name="ck_celda_codigo_no_vacio"),
         CheckConstraint("codigo = upper(regexp_replace(codigo, '^[[:space:]]+|[[:space:]]+$', '', 'g'))", name="ck_celda_codigo_normalizado"),
         CheckConstraint("tipo IN ('CARRO_CAMIONETA', 'MOTO')", name="ck_celda_tipo"),
+        CheckConstraint("estado IN ('ACTIVA', 'INHABILITADA', 'ELIMINADA')", name="ck_celda_estado"),
+        CheckConstraint("motivo_estado IS NULL OR motivo_estado ~ '[^[:space:]]'", name="ck_celda_motivo_no_vacio"),
+        CheckConstraint("estado = 'ACTIVA' OR motivo_estado IS NOT NULL", name="ck_celda_motivo_requerido"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
     codigo: Mapped[str] = mapped_column(Text, nullable=False)
     tipo: Mapped[str] = mapped_column(Text, nullable=False)
+
+    # RF-14 / RF-15: ACTIVA, INHABILITADA o ELIMINADA (borrado logico: conserva el historial).
+    estado: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'ACTIVA'"))
+    motivo_estado: Mapped[str | None] = mapped_column(Text, nullable=True)
+    fecha_estado: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     @validates("codigo", "tipo")
     def validate_text(self, key: str, value: str) -> str:
@@ -370,3 +380,5 @@ class Auditoria(Base):
     valor_anterior: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     valor_nuevo: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     motivo: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
