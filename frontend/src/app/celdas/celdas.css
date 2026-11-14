@@ -231,3 +231,19 @@ thead th {
     padding-top: 28px;
   }
 }
+
+/* ---- RF-12 a RF-15: totales, filtros y estado de la celda ---- */
+.totals { display: flex; flex-wrap: wrap; gap: 1.5rem 2.5rem; }
+.total-item h2 { margin: 0 0 0.25rem; font-size: 1rem; }
+.total-main { margin: 0; font-size: 1.25rem; font-weight: 600; }
+.total-detail { margin: 0.15rem 0 0; font-size: 0.875rem; opacity: 0.75; }
+.filters { display: flex; flex-wrap: wrap; align-items: end; gap: 0.75rem 1rem; margin-bottom: 1rem; }
+.filters .field { min-width: 11rem; }
+.badge { display: inline-block; padding: 0.1rem 0.6rem; border: 1px solid currentColor; border-radius: 999px; font-size: 0.8125rem; font-weight: 600; white-space: nowrap; }
+.badge[data-estado='DISPONIBLE'] { color: #1b6e3c; background: #e6f4ea; }
+.badge[data-estado='OCUPADA'] { color: #a32424; background: #fce8e6; }
+.badge[data-estado='INHABILITADA'] { color: #8a5a00; background: #fff4d6; }
+.badge[data-estado='ELIMINADA'] { color: #555; background: #eee; }
+.motive { display: block; margin-top: 0.25rem; max-width: 24rem; font-size: 0.8125rem; opacity: 0.8; }
+.muted { opacity: 0.6; font-size: 0.875rem; }
+textarea { width: 100%; font: inherit; resize: vertical; }

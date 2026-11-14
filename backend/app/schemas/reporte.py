@@ -24,7 +24,7 @@ class CeldaEstado(BaseModel):
     id: int
     codigo: str
     tipo: Literal["CARRO_CAMIONETA", "MOTO"]
-    estado: Literal["DISPONIBLE", "OCUPADA"]
+    estado: Literal["DISPONIBLE", "OCUPADA", "INHABILITADA"]
     reciente: bool
     """Asignada en los últimos 60 segundos (azul en el mapa)."""
     ocupacion: OcupacionCelda | None

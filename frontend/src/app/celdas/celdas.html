@@ -20,7 +20,7 @@
       <h2 id="form-title">{{ editing() === null ? 'Registrar celda' : 'Editar celda' }}</h2>
       <p class="hint">
         Todos los campos son obligatorios. Las motos usan celdas de moto; carros y camionetas
-        comparten las demás.
+        comparten las demás. Una celda solo se puede modificar cuando está libre.
       </p>
       <form [formGroup]="form" (ngSubmit)="save()" novalidate>
         <fieldset [disabled]="busy()">
@@ -67,30 +67,89 @@
       </form>
     </section>
   }
-  @if (pendingDelete(); as cell) {
+  @if (pendingAction(); as action) {
     <section
       class="panel confirmation"
       role="alertdialog"
-      aria-labelledby="delete-title"
-      aria-describedby="delete-description"
+      aria-labelledby="action-title"
+      aria-describedby="action-description"
     >
-      <h2 id="delete-title">Eliminar celda {{ cell.codigo }}</h2>
-      <p id="delete-description">
-        ¿Quieres eliminar la celda <strong>{{ cell.codigo }}</strong
-        >, de tipo {{ nombreCelda[cell.tipo] ?? cell.tipo }}? Esta acción no se puede deshacer.
-      </p>
+      <h2 id="action-title">{{ actionTitle(action) }}</h2>
+      <p id="action-description">{{ actionDescription(action) }}</p>
+      <div class="field">
+        <label for="motivo">Motivo</label>
+        <textarea
+          id="motivo"
+          rows="3"
+          required
+          [formControl]="motivo"
+          [attr.aria-invalid]="!!motivoError()"
+          aria-describedby="motivo-error"
+        ></textarea>
+        <span class="field-error" id="motivo-error">{{ motivoError() }}</span>
+      </div>
       <div class="actions">
-        <button type="button" (click)="cancel()" [disabled]="busy()">Cancelar eliminación</button
-        ><button type="button" class="danger" (click)="remove()" [disabled]="busy()">
-          {{ saving() ? 'Eliminando…' : 'Confirmar eliminación' }}
+        <button type="button" (click)="cancel()" [disabled]="busy()">Cancelar</button
+        ><button
+          type="button"
+          [class.danger]="action.kind === 'eliminar'"
+          [class.primary]="action.kind !== 'eliminar'"
+          (click)="confirmAction()"
+          [disabled]="busy()"
+        >
+          {{ actionButton(action) }}
         </button>
       </div>
     </section>
   }
+  @if (totales().length) {
+    <section class="panel totals" aria-label="Resumen de celdas por tipo">
+      @for (t of totales(); track t.tipo) {
+        <div class="total-item">
+          <h2>{{ nombreCelda[t.tipo] ?? t.tipo }}</h2>
+          <p class="total-main">{{ t.disponibles }} disponibles de {{ t.total }}</p>
+          <p class="total-detail">
+            {{ t.ocupadas }} ocupadas, {{ t.inhabilitadas }} inhabilitadas
+          </p>
+        </div>
+      }
+    </section>
+  }
   <section class="panel list" aria-label="Listado de celdas" [attr.aria-busy]="loading()">
+    <form class="filters" [formGroup]="filtersForm" (ngSubmit)="search()" role="search">
+      <div class="field">
+        <label for="filtro-q">Buscar por código</label>
+        <input id="filtro-q" type="search" formControlName="q" autocomplete="off" />
+      </div>
+      <div class="field">
+        <label for="filtro-tipo">Tipo</label>
+        <select id="filtro-tipo" formControlName="tipo">
+          <option value="">Todos los tipos</option>
+          @for (t of tipos; track t) {
+            <option [value]="t">{{ nombreCelda[t] }}</option>
+          }
+        </select>
+      </div>
+      <div class="field">
+        <label for="filtro-estado">Estado</label>
+        <select id="filtro-estado" formControlName="estado">
+          <option value="">Todos (sin eliminadas)</option>
+          @for (e of estadosFiltro; track e) {
+            <option [value]="e">{{ nombreEstado[e] }}</option>
+          }
+        </select>
+      </div>
+      <div class="actions">
+        <button type="submit" class="primary" [disabled]="busy()">Buscar</button
+        ><button type="button" (click)="clearFilters()" [disabled]="busy() || !filtering()">
+          Limpiar filtros
+        </button>
+      </div>
+    </form>
     <div class="list-heading">
       <h2>
-        Celdas registradas <span class="count">{{ total() }}</span>
+        Celdas {{ filtering() ? 'encontradas' : 'registradas' }}
+        <span class="count">{{ total() }}</span>
       </h2>
       <button type="button" (click)="load()" [disabled]="busy()">Actualizar listado</button>
     </div>
@@ -100,8 +159,13 @@
       <p class="notice error" role="alert">{{ listError() }}</p>
     } @else if (!items().length) {
       <div class="empty">
-        <h3>Aún no hay celdas</h3>
-        <p>Registra una celda para comenzar.</p>
+        @if (filtering()) {
+          <h3>Ninguna celda coincide</h3>
+          <p>Cambia o limpia los filtros para ver más celdas.</p>
+        } @else {
+          <h3>Aún no hay celdas</h3>
+          <p>Registra una celda para comenzar.</p>
+        }
       </div>
     } @else {
       <div class="table-scroll">
@@ -113,6 +177,7 @@
             <tr>
               <th scope="col">Código</th>
               <th scope="col">Tipo</th>
+              <th scope="col">Estado</th>
               <th scope="col">Acciones</th>
             </tr>
           </thead>
@@ -121,29 +186,64 @@
               <tr>
                 <th scope="row">{{ cell.codigo }}</th>
                 <td>{{ nombreCelda[cell.tipo] ?? cell.tipo }}</td>
+                <td>
+                  <span class="badge" [attr.data-estado]="cell.estado">{{
+                    nombreEstado[cell.estado]
+                  }}</span>
+                  @if (cell.estado === 'INHABILITADA' || cell.estado === 'ELIMINADA') {
+                    <small class="motive">Motivo: {{ cell.motivo_estado }}</small>
+                  }
+                </td>
                 <td class="row-actions">
-                  <button
-                    type="button"
-                    (click)="edit(cell)"
-                    [disabled]="busy()"
-                    [attr.aria-label]="'Editar ' + cell.codigo"
-                  >
-                    Editar</button
-                  ><button
-                    type="button"
-                    class="delete-link"
-                    (click)="confirmDelete(cell)"
-                    [disabled]="busy()"
-                    [attr.aria-label]="'Eliminar ' + cell.codigo"
-                  >
-                    Eliminar
-                  </button>
+                  @if (cell.estado === 'ELIMINADA') {
+                    <span class="muted">Sin acciones</span>
+                  } @else {
+                    <button
+                      type="button"
+                      (click)="edit(cell)"
+                      [disabled]="busy() || !canEdit(cell)"
+                      [attr.aria-label]="'Editar ' + cell.codigo"
+                    >
+                      Editar
+                    </button>
+                    @if (cell.estado === 'INHABILITADA') {
+                      <button
+                        type="button"
+                        (click)="startAction('habilitar', cell)"
+                        [disabled]="busy()"
+                        [attr.aria-label]="'Habilitar ' + cell.codigo"
+                      >
+                        Habilitar
+                      </button>
+                    } @else {
+                      <button
+                        type="button"
+                        (click)="startAction('inhabilitar', cell)"
+                        [disabled]="busy() || cell.estado === 'OCUPADA'"
+                        [attr.aria-label]="'Inhabilitar ' + cell.codigo"
+                      >
+                        Inhabilitar
+                      </button>
+                    }
+                    <button
+                      type="button"
+                      class="delete-link"
+                      (click)="startAction('eliminar', cell)"
+                      [disabled]="busy() || cell.estado === 'OCUPADA'"
+                      [attr.aria-label]="'Eliminar ' + cell.codigo"
+                    >
+                      Eliminar
+                    </button>
+                  }
                 </td>
               </tr>
             }
           </tbody>
         </table>
       </div>
+      <p class="hint">
+        Una celda ocupada no se puede editar, inhabilitar ni eliminar: primero debe salir el vehículo.
+      </p>
     }
     <nav class="pagination" aria-label="Paginación de celdas">
       <span>Página {{ page() }} de {{ pages() }} · {{ limit }} por página</span>

@@ -34,6 +34,7 @@
       <li><span class="muestra disponible"></span> Disponible</li>
       <li><span class="muestra ocupada"></span> Ocupada</li>
       <li><span class="muestra reciente"></span> Recién asignada (últimos 60 s)</li>
+      <li><span class="muestra inhabilitada"></span> Inhabilitada</li>
     </ul>
 
     <div class="two-col">
@@ -50,6 +51,7 @@
                   type="button"
                   class="celda"
                   [class.disponible]="c.estado === 'DISPONIBLE'"
+                  [class.inhabilitada]="c.estado === 'INHABILITADA'"
                   [class.ocupada]="c.estado === 'OCUPADA' && !c.reciente"
                   [class.reciente]="c.reciente"
                   [class.activa]="seleccionId() === c.id"
@@ -58,7 +60,9 @@
                   (click)="seleccionar(c)"
                 >
                   <b>{{ c.codigo }}</b>
-                  <small>{{ c.ocupacion?.placa ?? 'Libre' }}</small>
+                  <small>{{
+                    c.ocupacion?.placa ?? (c.estado === 'INHABILITADA' ? 'Inhabilitada' : 'Libre')
+                  }}</small>
                 </button>
               }
             </div>
@@ -169,7 +173,11 @@
                 </form>
               }
             } @else {
-              <p class="hint">La celda está libre.</p>
+              @if (c.estado === 'INHABILITADA') {
+                <p class="hint">La celda está inhabilitada: no se asigna a ningún vehículo.</p>
+              } @else {
+                <p class="hint">La celda está libre.</p>
+              }
             }
           </section>
         }

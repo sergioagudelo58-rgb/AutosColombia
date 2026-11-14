@@ -175,6 +175,13 @@
             <h2 id="movimientos-title">Movimientos</h2>
             <span class="muted">{{ h.total }} {{ h.total === 1 ? 'registro' : 'registros' }}</span>
           </div>
+          @if (corregir(); as c) {
+            <app-corregir
+              [movimiento]="c"
+              (cancelar)="corregir.set(null)"
+              (listo)="corregido()"
+            />
+          }
           @if (!h.items.length) {
             <p class="hint">No hay movimientos con esos filtros.</p>
           } @else {
@@ -193,7 +200,12 @@
                 <tbody>
                   @for (m of h.items; track m.id) {
                     <tr>
-                      <td>{{ m.numero_recibo }}</td>
+                      <td>
+                        {{ m.numero_recibo }}
+                        <br /><button type="button" class="enlace" (click)="corregir.set(m)">
+                          Corregir
+                        </button>
+                      </td>
                       <td>
                         <b>{{ m.placa }}</b
                         ><br /><span class="muted">{{ nombreVehiculo(m.tipo_vehiculo) }}</span>

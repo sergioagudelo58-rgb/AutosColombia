@@ -18,6 +18,7 @@ const OPCIONES: Opcion[] = [
   { ruta: '/gestion/usuarios', texto: 'Usuarios', soloAdmin: true },
   { ruta: '/gestion/celdas', texto: 'Celdas', soloAdmin: true },
   { ruta: '/gestion/reportes', texto: 'Reportes', soloAdmin: true },
+  { ruta: '/gestion/auditoria', texto: 'Auditoría', soloAdmin: true },
 ];
 
 @Component({
