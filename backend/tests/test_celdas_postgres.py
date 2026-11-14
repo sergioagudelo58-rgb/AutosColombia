@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_engine, get_session
 from app.main import app
+from conftest import ADMIN_PRUEBA, como
 
 pytestmark = pytest.mark.skipif(os.getenv("RUN_POSTGRES_TESTS") != "1", reason="Requiere PostgreSQL local.")
 
@@ -52,7 +53,8 @@ def test_crud_celdas(connection):
             yield session
         app.dependency_overrides[get_session] = override
         try:
-            with TestClient(app) as client:
+            # RF-02: la administración de celdas es del administrador.
+            with como(ADMIN_PRUEBA), TestClient(app) as client:
                 code = 'CELL-' + uuid4().hex.upper()
                 payload = {'codigo': f' {code.lower()} ', 'tipo': 'MOTO'}
                 result = client.post('/celdas', json=payload)

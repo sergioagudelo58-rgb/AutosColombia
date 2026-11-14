@@ -66,10 +66,11 @@ def test_entrada_no_acepta_celda_y_exige_puerta():
 
 def test_salida_por_placa_o_recibo_con_puerta():
     # RF-07: placa o recibo (o ambos, que el servidor verifica) y la puerta de salida.
-    assert SalidaCrear(placa="abc-123", operador_id=1, puerta_id=2).placa == "ABC123"
-    assert SalidaCrear(numero_recibo="e231", operador_id=1, puerta_id=1).numero_recibo == "E-000231"
+    # Iteración 2: el usuario y la puerta salen de la sesión (RF-01, RF-03), no del cuerpo.
+    assert SalidaCrear(placa="abc-123").placa == "ABC123"
+    assert SalidaCrear(numero_recibo="e231").numero_recibo == "E-000231"
     with pytest.raises(ValidationError, match="placa o el número del recibo"):
-        SalidaCrear(operador_id=1, puerta_id=1)
+        SalidaCrear()
     with pytest.raises(ValidationError):
         SalidaCrear(placa="ABC123", operador_id=1)
 

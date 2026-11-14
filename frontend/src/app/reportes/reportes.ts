@@ -7,7 +7,7 @@ import { FiltrosHistorial, HistorialPagina, ReporteOcupacion } from '../models/r
 import { NOMBRE_TIPO } from '../models/vehiculo';
 import { ReportesService } from '../services/reportes.service';
 import { fechaDia, fechaHora, hoyColombia, mensajeError } from '../shared/formato';
-import { TurnoService } from '../shared/turno.service';
+import { AuthService } from '../auth/auth.service';
 
 export const TAMANO_PAGINA = 20;
 
@@ -27,7 +27,7 @@ function celdaCsv(valor: string | number): string {
 })
 export class Reportes {
   private readonly api = inject(ReportesService);
-  private readonly turnos = inject(TurnoService);
+  private readonly auth = inject(AuthService);
   private readonly destroy = inject(DestroyRef);
   private readonly fb = inject(FormBuilder).nonNullable;
 
@@ -53,7 +53,8 @@ export class Reportes {
   }
 
   usuario(): string {
-    return this.turnos.turno()?.operador.nombre ?? 'Sin turno iniciado';
+    const s = this.auth.sesion();
+    return s ? `${s.nombre} (${s.usuario})` : 'Sin sesión';
   }
   nombreCelda(tipo: string): string {
     return NOMBRE_CELDA[tipo] ?? tipo;

@@ -3,10 +3,10 @@
 from datetime import date, datetime, timezone
 
 from sqlalchemy import (
-    BigInteger, CheckConstraint, Computed, Date, DateTime, ForeignKey, Identity, Index, Integer, SmallInteger,
-    Text, UniqueConstraint, func, text,
+    BigInteger, Boolean, CheckConstraint, Computed, Date, DateTime, ForeignKey, Identity, Index, Integer,
+    SmallInteger, Text, UniqueConstraint, func, text,
 )
-from sqlalchemy.dialects.postgresql import ExcludeConstraint
+from sqlalchemy.dialects.postgresql import JSONB, ExcludeConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, validates
 
 TIPOS_VEHICULO = ("MOTO", "CARRO", "CAMIONETA")
@@ -14,6 +14,9 @@ TIPOS_CELDA = ("CARRO_CAMIONETA", "MOTO")
 TIPOS_DOCUMENTO = ("CC", "CE", "TI", "PA", "NIT")
 DIAS_MENSUALIDAD = 30
 TELEFONO_COLOMBIANO = "^(3[0-9]{9}|60[1-8][0-9]{7})$"
+ROLES = ("ADMINISTRADOR", "OPERADOR")
+ESTADOS_USUARIO = ("ACTIVO", "RETIRADO")
+USUARIO_FORMATO = "^[a-z][a-z0-9._]{2,29}$"
 
 
 def tipo_celda_para(tipo_vehiculo: str) -> str:
@@ -138,17 +141,51 @@ class Celda(Base):
 
 
 class Operador(Base):
+    """Usuario del sistema (empleado): Administrador u Operador (RN-01). Nunca se borra; se retira (RN-05).
+
+    La tabla conserva su nombre de la iteración 1 porque los ingresos, salidas y novedades la referencian.
+    Los usuarios creados antes de la revisión 0007 no tienen documento ni contraseña: el administrador
+    debe restablecerla para que puedan ingresar.
+    """
     __tablename__ = "operador"
     __table_args__ = (
         CheckConstraint("nombre ~ '[^[:space:]]'", name="ck_operador_nombre_no_vacio"),
         CheckConstraint("telefono ~ '[^[:space:]]'", name="ck_operador_telefono_no_vacio"),
         UniqueConstraint("telefono", name="uq_operador_telefono"),
         CheckConstraint("telefono ~ '^(3[0-9]{9}|60[1-8][0-9]{7})$'", name="ck_operador_telefono_colombiano"),
+        UniqueConstraint("usuario", name="uq_operador_usuario"),
+        UniqueConstraint("numero_documento", name="uq_operador_documento"),
+        CheckConstraint(f"usuario ~ '{USUARIO_FORMATO}'", name="ck_operador_usuario_formato"),
+        CheckConstraint("rol IN ('ADMINISTRADOR', 'OPERADOR')", name="ck_operador_rol"),
+        CheckConstraint("estado IN ('ACTIVO', 'RETIRADO')", name="ck_operador_estado"),
+        CheckConstraint("tipo_documento IS NULL OR tipo_documento IN ('CC', 'CE', 'TI', 'PA', 'NIT')",
+                        name="ck_operador_tipo_documento"),
+        CheckConstraint("intentos_fallidos >= 0", name="ck_operador_intentos"),
+        CheckConstraint("(estado = 'RETIRADO') = (fecha_retiro IS NOT NULL)", name="ck_operador_retiro_completo"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
     nombre: Mapped[str] = mapped_column(Text, nullable=False)
     telefono: Mapped[str] = mapped_column(Text, nullable=False)
+    usuario: Mapped[str] = mapped_column(Text, nullable=False)
+    tipo_documento: Mapped[str | None] = mapped_column(Text, nullable=True)
+    numero_documento: Mapped[str | None] = mapped_column(Text, nullable=True)
+    nombres: Mapped[str | None] = mapped_column(Text, nullable=True)
+    apellidos: Mapped[str | None] = mapped_column(Text, nullable=True)
+    correo: Mapped[str | None] = mapped_column(Text, nullable=True)
+    rol: Mapped[str] = mapped_column(Text, nullable=False, server_default="OPERADOR", default="OPERADOR")
+    estado: Mapped[str] = mapped_column(Text, nullable=False, server_default="ACTIVO", default="ACTIVO")
+    # RNF-01: solo el hash bcrypt; nunca la contraseña.
+    contrasena_hash: Mapped[str | None] = mapped_column(Text, nullable=True)
+    contrasena_temporal: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"),
+                                                      default=True)
+    intentos_fallidos: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0", default=0)
+    bloqueado_hasta: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    ultima_conexion: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    fecha_ingreso: Mapped[date | None] = mapped_column(Date, nullable=True)
+    fecha_retiro: Mapped[date | None] = mapped_column(Date, nullable=True)
+    motivo_retiro: Mapped[str | None] = mapped_column(Text, nullable=True)
+    creado_en: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     @validates("nombre", "telefono")
     def validate_text(self, key: str, value: str) -> str:
@@ -272,3 +309,64 @@ class Novedad(Base):
     @validates("motivo")
     def validate_motivo(self, key: str, value: str) -> str:
         return required_text(value, "El motivo")
+
+
+class Sesion(Base):
+    """Sesión abierta en un equipo (RF-03). Se guarda solo el hash del token."""
+    __tablename__ = "sesion"
+    __table_args__ = (
+        UniqueConstraint("token_hash", name="uq_sesion_token"),
+        # RN-03: un mismo usuario solo puede tener una sesión abierta a la vez.
+        Index("uq_sesion_abierta", "operador_id", unique=True, postgresql_where=text("cerrada IS NULL")),
+        CheckConstraint("(cerrada IS NULL) = (motivo_cierre IS NULL)", name="ck_sesion_cierre_completo"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    token_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    operador_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("operador.id", name="fk_sesion_operador", ondelete="RESTRICT"), nullable=False
+    )
+    puerta_id: Mapped[int | None] = mapped_column(
+        SmallInteger, ForeignKey("puerta.id", name="fk_sesion_puerta", ondelete="RESTRICT"), nullable=True
+    )
+    equipo: Mapped[str | None] = mapped_column(Text, nullable=True)
+    iniciada: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    ultima_actividad: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(),
+                                                       nullable=False)
+    cerrada: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    motivo_cierre: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    operador: Mapped[Operador] = relationship()
+    puerta: Mapped[Puerta | None] = relationship()
+
+
+class Auditoria(Base):
+    """Bitácora de solo lectura (RF-01, RF-02, RF-04, RF-06; RNF-07). Un trigger impide modificar o borrar filas.
+
+    usuario_id no es llave foránea: también se registran intentos de usuarios inexistentes, y el
+    nombre de usuario se copia para que la fila se entienda aunque el usuario cambie.
+    """
+    __tablename__ = "auditoria"
+    __table_args__ = (
+        CheckConstraint("accion ~ '^[A-Z_]+$'", name="ck_auditoria_accion"),
+        Index("ix_auditoria_fecha", "fecha"),
+        Index("ix_auditoria_usuario", "usuario_id", "fecha"),
+        Index("ix_auditoria_accion", "accion"),
+        Index("ix_auditoria_placa", "placa"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    fecha: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    usuario_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    usuario: Mapped[str | None] = mapped_column(Text, nullable=True)
+    rol: Mapped[str | None] = mapped_column(Text, nullable=True)
+    puerta: Mapped[str | None] = mapped_column(Text, nullable=True)
+    equipo: Mapped[str | None] = mapped_column(Text, nullable=True)
+    accion: Mapped[str] = mapped_column(Text, nullable=False)
+    entidad: Mapped[str | None] = mapped_column(Text, nullable=True)
+    entidad_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    placa: Mapped[str | None] = mapped_column(Text, nullable=True)
+    detalle: Mapped[str] = mapped_column(Text, nullable=False)
+    valor_anterior: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    valor_nuevo: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    motivo: Mapped[str | None] = mapped_column(Text, nullable=True)

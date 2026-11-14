@@ -1,0 +1,53 @@
+.filtros {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 12px 0;
+}
+.filtros input {
+  min-width: 220px;
+  width: auto;
+}
+.filtros select {
+  width: auto;
+}
+.acciones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.acciones button {
+  padding: 6px 10px;
+  font-size: 13px;
+}
+.ui button.peligro {
+  color: #a03930;
+}
+.badge + .badge {
+  margin-left: 4px;
+}
+.temporal {
+  border-color: #f0dcae;
+  background: #fffaf0;
+}
+.clave {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  background: #fff;
+  border: 1px dashed #c9a75b;
+  border-radius: 8px;
+  padding: 8px 14px;
+}
+.confirmacion {
+  border-color: #d4a899;
+  background: #fffaf7;
+}
+.motivo {
+  grid-column: span 2;
+}
+@media (max-width: 480px) {
+  .motivo {
+    grid-column: auto;
+  }
+}
