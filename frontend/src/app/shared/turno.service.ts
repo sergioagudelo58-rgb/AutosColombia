@@ -1,4 +1,5 @@
-import { Injectable, computed, signal } from '@angular/core';
+import { Injectable, computed, inject } from '@angular/core';
+import { AuthService } from '../auth/auth.service';
 import { OperadorResumen, Puerta } from '../models/estancia';
 
 export interface Turno {
@@ -6,49 +7,20 @@ export interface Turno {
   puerta: Puerta;
 }
 
-const CLAVE = 'autos-colombia.turno';
-
 /**
- * Operador y puerta que registran los movimientos (RNF-07).
- * Reemplaza provisionalmente al inicio de sesión (RNF-05), que queda pendiente.
+ * Usuario y puerta que registran los movimientos, tomados de la sesión (RF-01, RF-03).
+ * El operador elige la puerta al ingresar; el administrador la elige cuando cubre un turno.
  */
 @Injectable({ providedIn: 'root' })
 export class TurnoService {
-  private readonly estado = signal<Turno | null>(this.leer());
-  readonly turno = this.estado.asReadonly();
-  readonly activo = computed(() => this.estado() !== null);
-
-  iniciar(turno: Turno): void {
-    this.estado.set(turno);
-    try {
-      localStorage.setItem(CLAVE, JSON.stringify(turno));
-    } catch {
-      // Sin almacenamiento, el turno dura mientras la pestaña esté abierta.
-    }
-  }
-
-  cerrar(): void {
-    this.estado.set(null);
-    try {
-      localStorage.removeItem(CLAVE);
-    } catch {
-      // Ignorado: el estado en memoria ya se limpió.
-    }
-  }
-
-  private leer(): Turno | null {
-    try {
-      const valor = JSON.parse(localStorage.getItem(CLAVE) ?? 'null');
-      if (
-        typeof valor?.operador?.id === 'number' &&
-        typeof valor?.operador?.nombre === 'string' &&
-        typeof valor?.puerta?.id === 'number' &&
-        typeof valor?.puerta?.nombre === 'string'
-      )
-        return valor as Turno;
-    } catch {
-      // Valor ausente o dañado: se pide el turno de nuevo.
-    }
-    return null;
-  }
+  private readonly auth = inject(AuthService);
+  readonly turno = computed<Turno | null>(() => {
+    const s = this.auth.sesion();
+    if (!s || s.puerta_id === null || s.puerta === null) return null;
+    return {
+      operador: { id: s.usuario_id, nombre: s.nombre, usuario: s.usuario },
+      puerta: { id: s.puerta_id, nombre: s.puerta },
+    };
+  });
+  readonly activo = computed(() => this.turno() !== null);
 }

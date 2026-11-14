@@ -16,7 +16,7 @@ class SesionNoUsada:
 
 
 @pytest.fixture
-def client():
+def client(sesion_admin):
     def override():
         yield SesionNoUsada()
     app.dependency_overrides[get_session] = override
@@ -37,11 +37,11 @@ def test_openapi_publica_rutas_de_la_iteracion(client):
 
 
 @pytest.mark.parametrize('payload', [
-    {'operador_id': 1, 'puerta_id': 1},                                   # sin placa ni recibo
-    {'placa': 'ABC123', 'operador_id': 1},                                # sin puerta (RF-07)
-    {'placa': 'ABC123', 'operador_id': 1, 'puerta_id': 0},
-    {'numero_recibo': 'XYZ', 'operador_id': 1, 'puerta_id': 1},
-    {'placa': 'ABC123', 'operador_id': 1, 'puerta_id': 1, 'salida': '2026-01-01'},
+    {},                                                                   # sin placa ni recibo
+    {'placa': 'ABC123', 'operador_id': 1},                                # RF-08: el usuario sale de la sesión
+    {'placa': 'ABC123', 'puerta_id': 1},                                  # y la puerta también
+    {'numero_recibo': 'XYZ'},
+    {'placa': 'ABC123', 'salida': '2026-01-01'},
 ])
 def test_salida_invalida(client, payload):
     response = client.post('/estancias/salida', json=payload)
@@ -49,7 +49,7 @@ def test_salida_invalida(client, payload):
 
 
 def test_salida_sin_placa_ni_recibo_explica_que_hacer(client):
-    detail = client.post('/estancias/salida', json={'operador_id': 1, 'puerta_id': 1}).json()['detail']
+    detail = client.post('/estancias/salida', json={}).json()['detail']
     assert 'placa o el número del recibo' in detail[0]['msg']
 
 
@@ -59,20 +59,19 @@ def test_abierta_valida_placa_y_recibo(client, query):
 
 
 @pytest.mark.parametrize('payload', [
-    {'celda_id': 30, 'operador_id': 1},                                   # motivo obligatorio (HU-09)
-    {'celda_id': 30, 'operador_id': 1, 'motivo': '   '},
-    {'celda_id': 30, 'operador_id': 1, 'motivo': 'x' * 301},
-    {'celda_id': 0, 'operador_id': 1, 'motivo': 'Parqueó en la 30'},
-    {'celda_id': 30, 'motivo': 'Parqueó en la 30'},
-    {'celda_id': 30, 'operador_id': 1, 'motivo': 'ok', 'celda_anterior_id': 25},
+    {'celda_id': 30},                                                     # motivo obligatorio (HU-09)
+    {'celda_id': 30, 'motivo': '   '},
+    {'celda_id': 30, 'motivo': 'x' * 301},
+    {'celda_id': 0, 'motivo': 'Parqueó en la 30'},
+    {'celda_id': 30, 'operador_id': 1, 'motivo': 'Parqueó en la 30'},    # RF-08: el usuario sale de la sesión
+    {'celda_id': 30, 'motivo': 'ok', 'celda_anterior_id': 25},
 ])
 def test_cambio_de_celda_invalido(client, payload):
     assert client.post('/estancias/5/celda', json=payload).status_code == 422
 
 
 def test_cambio_de_celda_valida_id_de_estancia(client):
-    assert client.post('/estancias/0/celda', json={'celda_id': 1, 'operador_id': 1,
-                                                   'motivo': 'x'}).status_code == 422
+    assert client.post('/estancias/0/celda', json={'celda_id': 1, 'motivo': 'x'}).status_code == 422
 
 
 @pytest.mark.parametrize('path', [
@@ -85,3 +84,4 @@ def test_cambio_de_celda_valida_id_de_estancia(client):
 ])
 def test_reportes_validan_parametros(client, path):
     assert client.get(path).status_code == 422
+

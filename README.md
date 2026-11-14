@@ -1,5 +1,49 @@
 # Autos Colombia
 
+## Iteración 2: usuarios, sesiones y permisos (RF-01 a RF-07)
+
+Implementa la parte de gestión de usuarios del documento «EA2». Al iniciar sesión, cada entrada,
+salida y cambio de celda queda a nombre del usuario de la sesión y con su puerta: la pantalla ya no
+pide elegir el operador ni la puerta, y la API ya no recibe `operador_id` ni `puerta_id`.
+
+| RF / HU | Qué hace | Dónde |
+| --- | --- | --- |
+| RF-01 Iniciar sesión | Usuario y contraseña personales; el operador elige su puerta. El mensaje de error no dice si falló el usuario o la contraseña. A los 5 intentos fallidos la cuenta se bloquea 15 minutos (queda en la auditoría). Un usuario retirado no ingresa. | `POST /auth/login`, pantalla **Iniciar sesión** (`/ingresar`) |
+| RF-02 Permisos por perfil | El menú del operador muestra solo Entrada, Salida, Mapa y Nuevo vehículo. El servidor valida el permiso en cada operación: usuarios, celdas, reportes y la modificación o el borrado de vehículos y clientes son del administrador. El intento no permitido se rechaza y queda en la auditoría (`ACCESO_DENEGADO`). | dependencias `SesionActual` y `Administrador` en `app/auth.py`, pantalla **Sin permiso** |
+| RF-03 Sesiones simultáneas | Los dos operadores y el administrador pueden estar conectados a la vez, pero cada usuario tiene una sola sesión (índice único parcial `uq_sesion_abierta`). La sesión se cierra a mano o tras 15 minutos sin actividad (la consulta automática del mapa no cuenta), y el administrador puede cerrar la de otro. | `GET/PATCH /auth/sesion`, `POST /auth/logout`, `POST /usuarios/{id}/cerrar-sesion` |
+| RF-04 Crear usuario | Pide tipo y número de documento, nombres, apellidos, teléfono, correo, usuario, perfil y fecha de ingreso. El usuario y el documento son únicos. Genera una contraseña temporal que se muestra una sola vez. | `POST /usuarios`, pantalla **Usuarios** |
+| RF-05 Contraseñas | Cambio obligatorio en el primer ingreso. Cada usuario puede cambiar la suya, y el administrador puede restablecerla (eso cierra la sesión abierta del empleado). Política: 8 caracteres, mayúscula, minúscula y número. Se guarda con bcrypt; el administrador nunca ve la definitiva. | `POST /auth/cambiar-contrasena`, `POST /usuarios/{id}/restablecer-contrasena` |
+| RF-06 Consultar y modificar | Lista con usuario, nombre, perfil, estado, última conexión y «en línea» (se actualiza cada 5 s), con búsqueda y filtros. El nombre de usuario no se cambia. Cada modificación queda en la auditoría con el valor anterior y el nuevo. | `GET/PATCH /usuarios` |
+| RF-07 Retirar y reactivar | Exige un motivo, cierra la sesión (la pantalla del empleado vuelve al ingreso en máximo 5 s) y conserva sus registros. No se puede retirar al último administrador activo: lo impiden el servicio y un trigger. Reactivar genera otra contraseña temporal. | `POST /usuarios/{id}/retirar`, `…/reactivar` |
+
+La tabla `auditoria` guarda los eventos de sesión y de usuarios que piden estos RF. Es de solo
+lectura: un trigger impide `UPDATE`, `DELETE` y `TRUNCATE`.
+
+### Puesta en marcha (PowerShell)
+
+```powershell
+Push-Location backend
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt   # agrega bcrypt
+.\.venv\Scripts\python.exe -m alembic -c alembic.ini upgrade head --sql   # revisar
+.\.venv\Scripts\python.exe -m alembic -c alembic.ini upgrade head         # migración 0007
+.\.venv\Scripts\python.exe -m app.crear_administrador                     # primer administrador
+Pop-Location
+```
+
+La migración 0007 convierte cada operador existente en una cuenta con usuario `operador<id>`,
+sin contraseña. Desde **Usuarios**, el administrador completa sus datos y usa **Restablecer
+contraseña** para entregarle una temporal. El proxy de Angular incluye ahora `/auth/**` y
+`/usuarios/**`; reinicia `npm.cmd start` para cargarlo. La pantalla y la API `/operadores` se
+reemplazan por **Usuarios**.
+
+### Pruebas
+
+- Backend: `test_auth_postgres.py` cubre RF-01 a RF-07 por HTTP con tokens reales, y
+  `test_seguridad.py` prueba la política de contraseñas sin base de datos. Las pruebas de
+  PostgreSQL esperan la revisión `0007`.
+- Frontend: `auth.spec.ts` (ingreso, token, cierre por el servidor, cambio de contraseña),
+  `usuarios.spec.ts` y `app.spec.ts` (menú por perfil).
+
 ## Iteración RF-07 a RF-11 (salida, mapa en vivo, novedades, reportes e historial)
 
 Completa la iteración 1 del documento «EA1 Diseño de sistema de información».
@@ -23,9 +67,7 @@ Decisiones:
   salvo durante el intercambio, que la difiere hasta el commit para mover los dos registros.
 - **Contrato de salida**: `POST /estancias/salida` ahora exige `puerta_id` y acepta `placa`,
   `numero_recibo` o ambos.
-- **Roles**: los reportes y el historial corresponden al administrador, pero todavía no existe
-  inicio de sesión (RNF-05). Por eso son visibles para cualquier usuario y el «usuario que lo
-  generó» es el operador del turno.
+- **Roles**: los reportes y el historial son solo del administrador desde la iteración 2.
 
 ### Migración 0006
 

@@ -3,6 +3,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Path, Query
 from sqlalchemy.orm import Session
 
+from app.auth import Administrador, SesionActual
 from app.database import get_session
 from app.schemas.cliente import ClienteActualizar, ClienteCrear, ClienteDetalle, ClientesPagina
 from app.services import cliente as service
@@ -13,12 +14,13 @@ ClientId = Annotated[int, Path(ge=1, le=9223372036854775807)]
 
 
 @router.post("", response_model=ClienteDetalle, status_code=201)
-def create(data: ClienteCrear, session: DatabaseSession):
+def create(data: ClienteCrear, actor: SesionActual, session: DatabaseSession):
     return service.create_client(session, data)
 
 
 @router.get("", response_model=ClientesPagina)
 def list_all(
+    actor: SesionActual,
     session: DatabaseSession,
     q: Annotated[str | None, Query(max_length=100, description="Documento, nombres o apellidos")] = None,
     offset: Annotated[int, Query(ge=0, le=9223372036854775807)] = 0,
@@ -28,10 +30,10 @@ def list_all(
 
 
 @router.get("/{id}", response_model=ClienteDetalle)
-def get_one(id: ClientId, session: DatabaseSession):
+def get_one(id: ClientId, actor: SesionActual, session: DatabaseSession):
     return service.get_client(session, id)
 
 
 @router.patch("/{id}", response_model=ClienteDetalle)
-def update(id: ClientId, data: ClienteActualizar, session: DatabaseSession):
+def update(id: ClientId, data: ClienteActualizar, actor: Administrador, session: DatabaseSession):
     return service.update_client(session, id, data)

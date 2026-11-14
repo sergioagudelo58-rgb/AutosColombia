@@ -1,3 +1,4 @@
+import { sesionDePrueba } from '../testing/auth';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
@@ -38,7 +39,11 @@ describe('Reportes', () => {
   beforeEach(() => {
     TestBed.configureTestingModule({
       imports: [Reportes],
-      providers: [provideHttpClient(), provideHttpClientTesting()],
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        sesionDePrueba('ADMINISTRADOR', null),
+      ],
     });
     http = TestBed.inject(HttpTestingController);
     c = TestBed.createComponent(Reportes).componentInstance;
@@ -90,7 +95,7 @@ describe('Reportes', () => {
     const clic = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
     c.exportarExcel();
     const texto = await blob!.text();
-    expect(texto).toContain('"Generado por";"Sin turno iniciado"');
+    expect(texto).toContain('"Generado por";"Laura Gómez (lgomez)"');
     expect(texto).toContain('"Porcentaje de ocupación";"66.3 %"');
     expect(clic).toHaveBeenCalled();
     crear.mockRestore();

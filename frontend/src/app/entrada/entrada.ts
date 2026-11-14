@@ -100,11 +100,8 @@ export class Entrada {
     this.guardando.set(true);
     this.error.set('');
     this.api
-      .entrada({
-        placa: consulta.vehiculo.placa,
-        operador_id: turno.operador.id,
-        puerta_id: turno.puerta.id,
-      })
+      // El usuario y la puerta los toma el servidor de la sesión.
+      .entrada({ placa: consulta.vehiculo.placa })
       .pipe(takeUntilDestroyed(this.destroy))
       .subscribe({
         next: (movimiento) => {
