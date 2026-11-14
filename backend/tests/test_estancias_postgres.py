@@ -40,7 +40,7 @@ def datos():
     engine = get_engine()
     with engine.connect() as c:
         assert c.scalar(text('SELECT current_database()')) == 'autos_colombia'
-        assert c.scalar(text('SELECT version_num FROM alembic_version')) == '0007'
+        assert c.scalar(text('SELECT version_num FROM alembic_version')) == '0007b'
     hoy = hoy_colombia()
     with Session(engine) as s, s.begin():
         cliente = Cliente(tipo_documento='CC', numero_documento=documento(), nombres='Laura', apellidos='Prueba',

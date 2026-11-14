@@ -67,7 +67,7 @@ def api():
     with get_engine().connect() as connection:
         transaction = connection.begin()
         try:
-            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0007"
+            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0007b"
             with Session(bind=connection, join_transaction_mode="create_savepoint", expire_on_commit=False) as session:
                 def override():
                     yield session
