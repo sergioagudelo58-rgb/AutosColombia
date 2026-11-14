@@ -11,7 +11,6 @@ from app.schemas.vehiculo import Placa, VehiculoRespuesta
 from app.services.mensualidad import Mensualidad
 
 Identificador = Annotated[int, Field(strict=True, ge=1, le=9223372036854775807)]
-IdPuerta = Annotated[int, Field(strict=True, ge=1, le=32767)]
 
 
 def normalizar_recibo(value: str) -> str:
@@ -31,11 +30,9 @@ def utc(value: datetime | None) -> datetime | None:
 
 
 class EntradaCrear(BaseModel):
-    """RF-05: la celda la asigna el sistema; el operario solo confirma."""
+    """RF-05: la celda la asigna el sistema. El usuario y la puerta salen de la sesión (RF-01, RF-03)."""
     model_config = ConfigDict(extra="forbid")
     placa: Placa
-    operador_id: Identificador
-    puerta_id: IdPuerta
 
 
 class SalidaCrear(BaseModel):
@@ -43,8 +40,6 @@ class SalidaCrear(BaseModel):
     model_config = ConfigDict(extra="forbid")
     placa: Placa | None = None
     numero_recibo: Recibo | None = None
-    operador_id: Identificador
-    puerta_id: IdPuerta
 
     @model_validator(mode="after")
     def placa_o_recibo(self) -> "SalidaCrear":
@@ -65,7 +60,6 @@ class CambioCeldaCrear(BaseModel):
     model_config = ConfigDict(extra="forbid")
     celda_id: Identificador
     motivo: Motivo
-    operador_id: Identificador
     intercambiar: bool = False
 
 
@@ -79,6 +73,7 @@ class OperadorResumen(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int
     nombre: str
+    usuario: str
 
 
 class NovedadRespuesta(BaseModel):

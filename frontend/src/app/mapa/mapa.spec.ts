@@ -3,7 +3,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { Panel } from '../models/reporte';
-import { TurnoService } from '../shared/turno.service';
+import { sesionDePrueba } from '../testing/auth';
 import { INTERVALO_PANEL_MS, Mapa } from './mapa';
 
 const ocupacion = (estancia_id: number, placa: string) => ({
@@ -85,19 +85,19 @@ describe('Mapa de celdas', () => {
     vi.useFakeTimers();
     TestBed.configureTestingModule({
       imports: [Mapa],
-      providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([])],
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideRouter([]),
+        sesionDePrueba('OPERADOR', { id: 1, nombre: 'Puerta 1' }),
+      ],
     });
     http = TestBed.inject(HttpTestingController);
-    TestBed.inject(TurnoService).iniciar({
-      operador: { id: 4, nombre: 'Laura' },
-      puerta: { id: 1, nombre: 'Puerta 1' },
-    });
     c = TestBed.createComponent(Mapa).componentInstance;
     vi.advanceTimersByTime(0);
     http.expectOne('/panel').flush(panel());
   });
   afterEach(() => {
-    TestBed.inject(TurnoService).cerrar();
     http.verify();
     vi.useRealTimers();
   });
@@ -145,7 +145,6 @@ describe('Mapa de celdas', () => {
     expect(req.request.body).toEqual({
       celda_id: 30,
       motivo: 'El conductor parqueó en la 30',
-      operador_id: 4,
       intercambiar: false,
     });
     req.flush({

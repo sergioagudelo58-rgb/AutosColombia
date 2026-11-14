@@ -11,6 +11,7 @@ from sqlalchemy import exists, func, select, text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, joinedload, selectinload
 
+from app.auditoria import Actor
 from app.models import TIPOS_CELDA, Celda, Estancia, Novedad, Operador, Puerta, Vehiculo, tipo_celda_para
 from app.schemas.celda import CeldaRespuesta
 from app.schemas.cliente import ClienteRespuesta
@@ -118,14 +119,18 @@ class ServicioEstancia:
 
     # ---------- utilidades ----------
 
-    def _operador(self, operador_id: int) -> Operador:
-        operador = self.session.get(Operador, operador_id)
-        if operador is None:
-            raise EstanciaError(404, "Operador no encontrado.")
+    def _operador(self, actor: Actor) -> Operador:
+        """Quien registra es el usuario de la sesión (RF-01): no se elige ni se envía."""
+        operador = self.session.get(Operador, actor.id)
+        if operador is None or operador.estado != "ACTIVO":
+            raise EstanciaError(401, "Usuario inactivo. Comuníquese con el administrador.")
         return operador
 
-    def _puerta(self, puerta_id: int) -> Puerta:
-        puerta = self.session.get(Puerta, puerta_id)
+    def _puerta(self, actor: Actor) -> Puerta:
+        """La puerta es la de la sesión (RF-03); el administrador la elige cuando cubre un turno."""
+        if actor.puerta_id is None:
+            raise EstanciaError(409, "Selecciona la puerta de tu turno antes de registrar.")
+        puerta = self.session.get(Puerta, actor.puerta_id)
         if puerta is None:
             raise EstanciaError(404, "Puerta no encontrada.")
         return puerta
@@ -204,13 +209,13 @@ class ServicioEstancia:
     # ---------- RF-05 (con el cupo por tipo que necesita la asignación) ----------
 
     @transaccion
-    def entrada(self, data: EntradaCrear) -> MovimientoRespuesta:
+    def entrada(self, data: EntradaCrear, actor: Actor) -> MovimientoRespuesta:
         # Bloquear el vehículo serializa dos confirmaciones del mismo vehículo en ambas puertas.
         vehiculo = self.session.scalar(select(Vehiculo).where(Vehiculo.placa == data.placa).with_for_update())
         if vehiculo is None:
             raise EstanciaError(404, "Vehículo no registrado. Registra el cliente y el vehículo para continuar.")
-        operador = self._operador(data.operador_id)
-        puerta = self._puerta(data.puerta_id)
+        operador = self._operador(actor)
+        puerta = self._puerta(actor)
         abierta = self.session.scalar(select(Estancia).where(Estancia.vehiculo_id == vehiculo.id, _abierta()))
         if abierta is not None:
             raise EstanciaError(409, f"El vehículo ya se encuentra en la celda {abierta.celda.codigo}.")
@@ -268,10 +273,10 @@ class ServicioEstancia:
         return self._detalle(self._abierta_para(placa, numero_recibo).id)
 
     @transaccion
-    def salida(self, data: SalidaCrear) -> MovimientoRespuesta:
+    def salida(self, data: SalidaCrear, actor: Actor) -> MovimientoRespuesta:
+        operador = self._operador(actor)
+        puerta = self._puerta(actor)
         estancia = self._abierta_para(data.placa, data.numero_recibo, bloquear=True)
-        operador = self._operador(data.operador_id)
-        puerta = self._puerta(data.puerta_id)
         try:
             estancia.cerrar(datetime.now(timezone.utc), operador, puerta)
         except ValueError:
@@ -282,8 +287,8 @@ class ServicioEstancia:
     # ---------- RF-09 ----------
 
     @transaccion
-    def cambiar_celda(self, estancia_id: int, data: CambioCeldaCrear) -> CambioCeldaRespuesta:
-        operador = self._operador(data.operador_id)
+    def cambiar_celda(self, estancia_id: int, data: CambioCeldaCrear, actor: Actor) -> CambioCeldaRespuesta:
+        operador = self._operador(actor)
         estancia = self.session.scalar(select(Estancia).where(Estancia.id == estancia_id).with_for_update())
         if estancia is None:
             raise EstanciaError(404, "Registro de ingreso no encontrado.")

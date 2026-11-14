@@ -77,3 +77,30 @@ footer {
     flex-wrap: wrap;
   }
 }
+.cuenta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.enlace {
+  font-size: 13px;
+  color: #214c43;
+}
+.salir {
+  font: inherit;
+  font-size: 13px;
+  padding: 7px 12px;
+  border: 1px solid #c9d7ce;
+  border-radius: 8px;
+  background: #fff;
+  color: #214c43;
+  cursor: pointer;
+}
+.salir:hover {
+  background: #eef3ee;
+}
+.salir:focus-visible {
+  outline: 3px solid #aa7b2e;
+  outline-offset: 3px;
+}

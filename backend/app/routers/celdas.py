@@ -3,11 +3,13 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Path, Query, Response
 from sqlalchemy.orm import Session
 
+from app.auth import solo_admin
 from app.database import get_session
 from app.schemas.celda import CeldaActualizar, CeldaCrear, CeldaRespuesta, CeldasPagina
 from app.services import celda as service
 
-router = APIRouter(prefix="/celdas", tags=["Celdas"])
+# RF-02: la administración de celdas es solo del administrador.
+router = APIRouter(prefix="/celdas", tags=["Celdas"], dependencies=[Depends(solo_admin)])
 DatabaseSession = Annotated[Session, Depends(get_session)]
 CellId = Annotated[int, Path(ge=1, le=9223372036854775807)]
 

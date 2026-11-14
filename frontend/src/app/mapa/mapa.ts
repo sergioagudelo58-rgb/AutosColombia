@@ -154,7 +154,6 @@ export class Mapa {
       .cambiarCelda(actual.ocupacion.estancia_id, {
         celda_id: destino.id,
         motivo: this.form.controls.motivo.value.trim(),
-        operador_id: turno.operador.id,
         intercambiar: destino.estado === 'OCUPADA' && intercambiar,
       })
       .pipe(takeUntilDestroyed(this.destroy))

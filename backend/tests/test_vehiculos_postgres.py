@@ -5,11 +5,13 @@ from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from app.database import get_engine, get_session
 from app.main import app
+from app.models import Auditoria
+from conftest import ADMIN_PRUEBA, como
 
 pytestmark = pytest.mark.skipif(
     os.getenv("RUN_POSTGRES_TESTS") != "1",
@@ -23,13 +25,14 @@ def client():
         transaction = connection.begin()
         try:
             assert connection.scalar(text("SELECT current_database()")) == "autos_colombia"
-            assert connection.scalar(text("SELECT version_num FROM alembic_version")) in {"0006"}
+            assert connection.scalar(text("SELECT version_num FROM alembic_version")) in {"0007"}
             with Session(bind=connection, join_transaction_mode="create_savepoint") as session:
                 def override_session():
                     yield session
                 app.dependency_overrides[get_session] = override_session
                 try:
-                    with TestClient(app) as api:
+                    with como(ADMIN_PRUEBA), TestClient(app) as api:
+                        api.session = session
                         yield api
                 finally:
                     app.dependency_overrides.pop(get_session, None)
@@ -94,3 +97,17 @@ def test_crud_and_errors_in_postgres(client):
     assert client.delete(f"/vehiculos/{first_id}").status_code == 404
     assert client.delete(f"/vehiculos/{second_id}").status_code == 204
     assert client.get("/health").json() == {"status": "ok"}
+
+
+def test_operador_no_modifica_ni_borra_vehiculos_ni_clientes(client):
+    """RF-02: el operador solo registra; el intento no permitido se rechaza y queda en la auditoría."""
+    operador = ADMIN_PRUEBA.__class__(**{**ADMIN_PRUEBA.__dict__, "id": 999999, "usuario": "operador_x",
+                                         "rol": "OPERADOR"})
+    with como(operador):
+        for metodo, ruta in (("PATCH", "/vehiculos/1"), ("DELETE", "/vehiculos/1"), ("PATCH", "/clientes/1")):
+            respuesta = client.request(metodo, ruta, json={"color": "Rojo"} if "vehiculos" in ruta else {})
+            assert respuesta.status_code == 403
+            assert respuesta.json()["detail"] == "No tiene permiso para esta acción."
+    denegados = client.session.scalars(select(Auditoria).where(Auditoria.usuario == "operador_x",
+                                                               Auditoria.accion == "ACCESO_DENEGADO")).all()
+    assert len(denegados) == 3

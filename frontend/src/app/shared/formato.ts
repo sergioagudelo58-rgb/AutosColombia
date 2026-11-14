@@ -43,7 +43,7 @@ export const placaColombiana: ValidatorFn = (c) =>
 /** Mensaje público del backend o uno genérico que no expone detalles. */
 export function mensajeError(error: HttpErrorResponse, fallback422 = 'Revisa los datos.'): string {
   const detail = error.error?.detail;
-  if ([404, 409, 422].includes(error.status) && typeof detail === 'string') return detail;
+  if ([403, 404, 409, 422, 423].includes(error.status) && typeof detail === 'string') return detail;
   if (error.status === 422 && Array.isArray(detail) && typeof detail[0]?.msg === 'string')
     return detail[0].msg.replace(/^Value error, /, '');
   if (error.status === 422) return fallback422;

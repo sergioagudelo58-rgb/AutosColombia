@@ -3,40 +3,25 @@
     <a class="brand" routerLink="/" aria-label="Autos Colombia, inicio">
       <span class="brand-mark" aria-hidden="true">AC</span><span>Autos Colombia</span>
     </a>
-    <nav aria-label="Navegación principal">
-      <a routerLink="/operacion/entrada" routerLinkActive="active" ariaCurrentWhenActive="page"
-        >Entrada</a
-      >
-      <a routerLink="/operacion/salida" routerLinkActive="active" ariaCurrentWhenActive="page"
-        >Salida</a
-      >
-      <a routerLink="/operacion/celdas" routerLinkActive="active" ariaCurrentWhenActive="page"
-        >Mapa</a
-      >
-      <a routerLink="/gestion/clientes" routerLinkActive="active" ariaCurrentWhenActive="page"
-        >Clientes</a
-      >
-      <a routerLink="/gestion/operadores" routerLinkActive="active" ariaCurrentWhenActive="page"
-        >Operadores</a
-      >
-      <a routerLink="/gestion/celdas" routerLinkActive="active" ariaCurrentWhenActive="page"
-        >Celdas</a
-      >
-      <a routerLink="/gestion/reportes" routerLinkActive="active" ariaCurrentWhenActive="page"
-        >Reportes</a
-      >
-      <a
-        routerLink="/"
-        routerLinkActive="active"
-        [routerLinkActiveOptions]="{ exact: true }"
-        ariaCurrentWhenActive="page"
-        >Inicio</a
-      >
-    </nav>
-    @if (turnos.turno(); as t) {
-      <span class="turno-chip" title="Operador y puerta del turno actual"
-        >{{ t.operador.nombre }} · {{ t.puerta.nombre }}</span
-      >
+    @if (menu().length) {
+      <nav aria-label="Navegación principal">
+        @for (o of menu(); track o.ruta) {
+          <a [routerLink]="o.ruta" routerLinkActive="active" ariaCurrentWhenActive="page">{{
+            o.texto
+          }}</a>
+        }
+      </nav>
+    }
+    @if (auth.sesion(); as s) {
+      <div class="cuenta">
+        <span class="turno-chip" title="Usuario, perfil y puerta de la sesión"
+          >{{ s.nombre }} · {{ nombreRol[s.rol] }}{{ s.puerta ? ' · ' + s.puerta : '' }}</span
+        >
+        @if (!auth.debeCambiarClave()) {
+          <a class="enlace" routerLink="/cambiar-contrasena">Contraseña</a>
+        }
+        <button type="button" class="salir" (click)="auth.logout()">Cerrar sesión</button>
+      </div>
     }
   </header>
   <main><router-outlet /></main>
