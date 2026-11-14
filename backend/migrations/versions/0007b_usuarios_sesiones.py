@@ -1,7 +1,7 @@
 """Iteración 2: usuarios, sesiones y permisos por perfil (RF-01 a RF-07).
 
-Revision ID: 0007
-Revises: 0006
+Revision ID: 0007b
+Revises: 0007
 
 - OPERADOR pasa a ser la cuenta de usuario (Administrador u Operador): usuario único, documento
   único, hash bcrypt, rol, estado, bloqueo por intentos y datos de retiro. Los operadores que ya

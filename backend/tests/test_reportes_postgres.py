@@ -1,6 +1,6 @@
 """RF-07 a RF-11 contra PostgreSQL real, con los datos temporales del fixture `datos`.
 
-Requiere RUN_POSTGRES_TESTS=1 y la base autos_colombia en la revisión 0007.
+Requiere RUN_POSTGRES_TESTS=1 y la base autos_colombia en la revisión 0007b.
 """
 from fastapi.testclient import TestClient
 import pytest
