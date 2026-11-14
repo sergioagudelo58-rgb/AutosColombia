@@ -56,7 +56,9 @@ def test_rejects_unknown_type_and_preserves_phone_text():
 
 def test_required_columns_and_identity():
     # Los datos de cliente y mensualidad son nulos solo en vehículos anteriores a la revisión 0005.
-    opcionales = {"vehiculo": {"cliente_id", "linea", "fecha_pago", "fecha_vencimiento"}, "celda": set(),
+    opcionales = {"vehiculo": {"cliente_id", "linea", "fecha_pago", "fecha_vencimiento"},
+                  # RF-14: el motivo y la fecha solo se guardan al cambiar el estado de la celda.
+                  "celda": {"motivo_estado", "fecha_estado"},
                   # Iteración 2: datos de la cuenta que no tienen los operadores creados antes de la revisión 0007.
                   "operador": {"tipo_documento", "numero_documento", "nombres", "apellidos", "correo",
                                "contrasena_hash", "bloqueado_hasta", "ultima_conexion", "fecha_ingreso",
