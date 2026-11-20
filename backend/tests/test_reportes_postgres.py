@@ -104,7 +104,9 @@ def test_reporte_de_ocupacion_e_historial(datos):
         ocupadas = sum(c['estado'] == 'OCUPADA' for c in panel['celdas'])
         # Los totales coinciden con el mapa de celdas (HU-10).
         assert despues['celdas_ocupadas'] == ocupadas == despues['vehiculos_adentro']
-        assert despues['celdas_total'] == len(panel['celdas'])
+        # La capacidad cuenta solo las celdas activas; el mapa también muestra las inhabilitadas (RF-14).
+        assert despues['celdas_total'] == sum(c['total'] for c in panel['cupos'])
+        assert despues['celdas_total'] == sum(c['estado'] != 'INHABILITADA' for c in panel['celdas'])
         assert any(a['tipo'] == 'ENTRADA' and a['placa'] == d['placa']['carro'] for a in panel['actividad'])
         assert client.get('/reportes/ocupacion?desde=2026-10-19&hasta=2026-10-18').status_code == 422
 
