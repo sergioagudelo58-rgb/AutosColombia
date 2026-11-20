@@ -1,5 +1,21 @@
 # Autos Colombia
 
+## Iteración 3: gestión de pagos – RF-01 y RF-03 (registrar el pago y mostrar la vigencia)
+
+El pago se registra solo en la plataforma, sin pasarela. El operario (o el administrador con su propio
+usuario) busca por cédula y placa, verifica los datos y registra la fecha de pago, el valor y el medio
+(banco, efectivo o QR). El nuevo vencimiento lo calcula `Vehiculo.aplicar_pago` desde la fecha de corte
+(RF-02, migración 0008).
+
+| RF | Qué hace | Dónde |
+| --- | --- | --- |
+| RF-01 Registrar el pago | Valida que la cédula y la placa estén registradas y que el vehículo sea de ese cliente. Notificaciones: «El cliente no está registrado.», «El vehículo no está registrado.» y «El vehículo no pertenece a este cliente.». Fecha, valor (mayor que cero) y medio son obligatorios; la fecha no puede ser posterior a hoy. El pago queda con el usuario de la sesión y en la auditoría (`PAGO_REGISTRADO`). | `POST /pagos`, pantalla **Pagos** (`/operacion/pagos`) |
+| RF-03 Mostrar hasta cuándo va la mensualidad | Al buscar muestra la vigencia actual; al guardar muestra «Mensualidad vigente hasta dd/mm/aaaa», la fecha de corte usada y quién registró el pago. | `GET /pagos/consulta?cedula&placa`, respuesta de `POST /pagos` |
+
+El proxy de Angular incluye ahora `/pagos` y `/pagos/**`: reinicia `npm.cmd start` para cargarlo.
+Pruebas: `tests/test_pagos_api.py` (validación, sin base de datos), `tests/test_pagos_postgres.py`
+(notificaciones, cálculo desde el corte, usuario de la sesión y auditoría) y `src/app/pagos/pagos.spec.ts`.
+
 ## Iteración 2: usuarios, sesiones y permisos (RF-01 a RF-07)
 
 Implementa la parte de gestión de usuarios del documento «EA2». Al iniciar sesión, cada entrada,
