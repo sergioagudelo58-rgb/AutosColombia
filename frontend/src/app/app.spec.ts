@@ -20,6 +20,7 @@ describe('Menú por perfil (RF-02)', () => {
     expect(menu('OPERADOR')).toEqual([
       ['/operacion/entrada', 'Entrada'],
       ['/operacion/salida', 'Salida'],
+      ['/operacion/pagos', 'Pagos'],
       ['/operacion/celdas', 'Mapa'],
       ['/gestion/clientes', 'Nuevo vehículo'],
     ]);
@@ -29,6 +30,7 @@ describe('Menú por perfil (RF-02)', () => {
     expect(menu('ADMINISTRADOR').map(([href]) => href)).toEqual([
       '/operacion/entrada',
       '/operacion/salida',
+      '/operacion/pagos',
       '/operacion/celdas',
       '/gestion/clientes',
       '/gestion/usuarios',
