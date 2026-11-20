@@ -17,6 +17,7 @@ from app.routers.panel import router as panel_router
 from app.routers.reportes import router as reportes_router
 from app.routers.auditoria import router as auditoria_router
 from app.routers.correcciones import router as correcciones_router
+from app.routers.pagos import router as pagos_router
 
 app = FastAPI(title="Autos Colombia API")
 app.include_router(vehiculos_router)
@@ -30,6 +31,7 @@ app.include_router(panel_router)
 app.include_router(reportes_router)
 app.include_router(auditoria_router)
 app.include_router(correcciones_router)
+app.include_router(pagos_router)
 
 
 @app.exception_handler(VehiculoError)

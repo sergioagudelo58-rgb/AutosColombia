@@ -13,6 +13,7 @@ interface Opcion {
 const OPCIONES: Opcion[] = [
   { ruta: '/operacion/entrada', texto: 'Entrada', soloAdmin: false },
   { ruta: '/operacion/salida', texto: 'Salida', soloAdmin: false },
+  { ruta: '/operacion/pagos', texto: 'Pagos', soloAdmin: false },
   { ruta: '/operacion/celdas', texto: 'Mapa', soloAdmin: false },
   { ruta: '/gestion/clientes', texto: 'Nuevo vehículo', soloAdmin: false },
   { ruta: '/gestion/usuarios', texto: 'Usuarios', soloAdmin: true },

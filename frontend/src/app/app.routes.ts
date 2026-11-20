@@ -41,6 +41,12 @@ export const routes: Routes = [
         loadComponent: () => import('./salida/salida').then((m) => m.Salida),
       },
       {
+        // Iteración 3, RF-01 y RF-03: operario y administrador registran pagos.
+        path: 'operacion/pagos',
+        title: 'Registrar pago | Autos Colombia',
+        loadComponent: () => import('./pagos/pagos').then((m) => m.Pagos),
+      },
+      {
         path: 'operacion/celdas',
         title: 'Mapa de celdas | Autos Colombia',
         loadComponent: () => import('./mapa/mapa').then((m) => m.Mapa),

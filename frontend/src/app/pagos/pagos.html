@@ -1,0 +1,173 @@
+<section class="ui" aria-labelledby="pagos-title">
+  <header class="heading">
+    <div>
+      <span class="eyebrow">OPERACIÓN · PAGOS</span>
+      <h1 id="pagos-title">Registrar pago</h1>
+      <p>
+        El cliente presenta el recibo del banco, paga en efectivo o muestra el comprobante del pago
+        con QR. Digita su cédula y la placa, verifica los datos y registra el pago.
+      </p>
+    </div>
+  </header>
+
+  @if (registrado(); as r) {
+    <div class="notice success vigencia" role="status">
+      <strong>Pago registrado · {{ r.mensualidad.mensaje }}</strong>
+      {{ r.placa }} · {{ r.cliente }} (cédula {{ r.cedula }}) · {{ valorEnPesos(r.valor) }} ·
+      {{ nombreMedio(r.medio) }} · pagado el {{ fechaDia(r.fecha_pago) }}.
+      @if (r.vencimiento_anterior) {
+        Los 30 días se cuentan desde la fecha de corte {{ fechaDia(r.vencimiento_anterior) }}.
+      } @else {
+        Primer pago: los 30 días se cuentan desde la fecha de pago.
+      }
+      Registrado por {{ r.registrado_por }} el {{ fechaHora(r.registrado_en) }}
+    </div>
+  }
+
+  <section class="panel" aria-labelledby="paso1">
+    <h2 id="paso1"><span class="paso">1</span> Buscar cliente y vehículo</h2>
+    <form [formGroup]="busqueda" (ngSubmit)="buscar()" class="buscar" novalidate>
+      <div class="field">
+        <label for="cedula">Cédula del cliente</label>
+        <input
+          id="cedula"
+          formControlName="cedula"
+          inputmode="numeric"
+          autocomplete="off"
+          maxlength="25"
+          placeholder="1036458221"
+          [attr.aria-invalid]="invalido('busqueda', 'cedula')"
+          aria-describedby="cedula-error"
+        />
+        <span id="cedula-error" class="field-error">
+          @if (invalido('busqueda', 'cedula')) {
+            Digita la cédula del cliente (solo letras y números).
+          }
+        </span>
+      </div>
+      <div class="field">
+        <label for="placa">Placa</label>
+        <input
+          id="placa"
+          class="plate"
+          formControlName="placa"
+          autocomplete="off"
+          maxlength="10"
+          placeholder="ABC123"
+          [attr.aria-invalid]="invalido('busqueda', 'placa')"
+          aria-describedby="placa-error"
+        />
+        <span id="placa-error" class="field-error">
+          @if (invalido('busqueda', 'placa')) {
+            Digita una placa colombiana: ABC123 o ABC12D.
+          }
+        </span>
+      </div>
+      <button class="primary big" type="submit" [disabled]="ocupado()">
+        {{ buscando() ? 'Buscando…' : 'Buscar' }}
+      </button>
+    </form>
+    @if (error()) {
+      <p class="notice error" role="alert">{{ error() }}</p>
+    }
+  </section>
+
+  @if (consulta(); as c) {
+    <section class="panel" aria-labelledby="paso2">
+      <div class="row-between">
+        <h2 id="paso2"><span class="paso">2</span> Verifica los datos</h2>
+        <span class="badge" [class]="claseMensualidad(c.mensualidad.estado)">
+          Mensualidad: {{ nombreMensualidad[c.mensualidad.estado] }}
+        </span>
+      </div>
+      <dl class="facts">
+        <div>
+          <dt>Cliente</dt>
+          <dd>{{ c.cliente.nombres }} {{ c.cliente.apellidos }}</dd>
+        </div>
+        <div>
+          <dt>Cédula</dt>
+          <dd>{{ c.cliente.numero_documento }}</dd>
+        </div>
+        <div>
+          <dt>Placa</dt>
+          <dd>{{ c.vehiculo.placa }}</dd>
+        </div>
+        <div>
+          <dt>Vehículo</dt>
+          <dd>{{ tipo(c.vehiculo.tipo) }} · {{ c.vehiculo.marca }} {{ c.vehiculo.linea ?? '' }}</dd>
+        </div>
+        <div>
+          <dt>Mensualidad hasta</dt>
+          <dd>{{ fechaDia(c.mensualidad.fecha_vencimiento) }}</dd>
+        </div>
+      </dl>
+      <p class="notice" [class]="claseAviso(c.mensualidad.estado)">{{ c.mensualidad.mensaje }}</p>
+    </section>
+
+    <section class="panel" aria-labelledby="paso3">
+      <h2 id="paso3"><span class="paso">3</span> Registrar el pago</h2>
+      <form [formGroup]="pago" (ngSubmit)="registrar()" class="pago" novalidate>
+        <div class="field">
+          <label for="fecha_pago">Fecha de pago</label>
+          <input
+            id="fecha_pago"
+            type="date"
+            formControlName="fecha_pago"
+            [max]="hoy"
+            [attr.aria-invalid]="invalido('pago', 'fecha_pago')"
+            aria-describedby="fecha-error"
+          />
+          <span id="fecha-error" class="field-error">
+            @if (invalido('pago', 'fecha_pago')) {
+              Digita la fecha de pago; no puede ser posterior a hoy.
+            }
+          </span>
+        </div>
+        <div class="field">
+          <label for="valor">Valor del pago (pesos)</label>
+          <input
+            id="valor"
+            formControlName="valor"
+            inputmode="decimal"
+            autocomplete="off"
+            placeholder="120000"
+            [attr.aria-invalid]="invalido('pago', 'valor')"
+            aria-describedby="valor-error"
+          />
+          <span id="valor-error" class="field-error">
+            @if (invalido('pago', 'valor')) {
+              Digita un valor mayor que cero, sin puntos (ejemplo: 120000).
+            }
+          </span>
+        </div>
+        <fieldset class="field medios" aria-describedby="medio-error">
+          <legend>Medio de pago</legend>
+          @for (m of medios; track m.valor) {
+            <label class="medio">
+              <input type="radio" formControlName="medio" [value]="m.valor" />
+              {{ m.nombre }}
+            </label>
+          }
+          <span id="medio-error" class="field-error">
+            @if (invalido('pago', 'medio')) {
+              Elige cómo pagó el cliente.
+            }
+          </span>
+        </fieldset>
+        <p class="notice info">
+          La nueva mensualidad es de 30 días y se cuenta desde la fecha de corte
+          @if (c.mensualidad.fecha_vencimiento) {
+            ({{ fechaDia(c.mensualidad.fecha_vencimiento) }}),
+          } @else {
+            (en el primer pago, desde la fecha de pago),
+          }
+          no desde el día en que el cliente paga.
+        </p>
+        <button class="primary big" type="submit" [disabled]="ocupado()">
+          {{ guardando() ? 'Registrando…' : 'Registrar pago' }}
+        </button>
+      </form>
+    </section>
+  }
+</section>
