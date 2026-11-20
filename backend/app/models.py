@@ -1,24 +1,28 @@
 ﻿"""Modelos iniciales. Importar este módulo no crea tablas ni abre conexiones."""
 
 from datetime import date, datetime, timezone
+from decimal import Decimal
 
 from sqlalchemy import (
     BigInteger, Boolean, CheckConstraint, Computed, Date, DateTime, ForeignKey, Identity, Index, Integer,
-    SmallInteger, Text, UniqueConstraint, func, text,
+    Numeric, SmallInteger, Text, UniqueConstraint, func, text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, ExcludeConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, validates
+
+from app.services.mensualidad import DIAS_MENSUALIDAD, calcular_vencimiento
 
 TIPOS_VEHICULO = ("MOTO", "CARRO", "CAMIONETA")
 TIPOS_CELDA = ("CARRO_CAMIONETA", "MOTO")
 # Estado guardado de la celda (RF-14, RF-15). "Ocupada" no se guarda: se calcula con la estancia abierta.
 ESTADOS_CELDA = ("ACTIVA", "INHABILITADA", "ELIMINADA")
 TIPOS_DOCUMENTO = ("CC", "CE", "TI", "PA", "NIT")
-DIAS_MENSUALIDAD = 30
 TELEFONO_COLOMBIANO = "^(3[0-9]{9}|60[1-8][0-9]{7})$"
 ROLES = ("ADMINISTRADOR", "OPERADOR")
 ESTADOS_USUARIO = ("ACTIVO", "RETIRADO")
 USUARIO_FORMATO = "^[a-z][a-z0-9._]{2,29}$"
+# Iteración 3, RN-03: el cliente pagó en un banco, en efectivo o por QR.
+MEDIOS_PAGO = ("BANCO", "EFECTIVO", "QR")
 
 
 def tipo_celda_para(tipo_vehiculo: str) -> str:
@@ -83,6 +87,8 @@ class Vehiculo(Base):
         CheckConstraint("modelo BETWEEN 1 AND 9999", name="ck_vehiculo_modelo_anio"),
         CheckConstraint("tipo IN ('MOTO', 'CARRO', 'CAMIONETA')", name="ck_vehiculo_tipo"),
         CheckConstraint("linea IS NULL OR linea ~ '[^[:space:]]'", name="ck_vehiculo_linea_no_vacia"),
+        CheckConstraint("(fecha_pago IS NULL) = (fecha_vencimiento IS NULL)",
+                        name="ck_vehiculo_mensualidad_completa"),
         Index("ix_vehiculo_cliente", "cliente_id"),
     )
 
@@ -97,11 +103,10 @@ class Vehiculo(Base):
         BigInteger, ForeignKey("cliente.id", name="fk_vehiculo_cliente", ondelete="RESTRICT"), nullable=True
     )
     linea: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Fecha del último pago registrado y fecha de corte de la mensualidad (iteración 3, RF-02).
+    # Desde la revisión 0008 el vencimiento es una columna normal: cada pago lo mueve desde el corte.
     fecha_pago: Mapped[date | None] = mapped_column(Date, nullable=True)
-    # RN-06: vencimiento = fecha de pago + 30 días; lo calcula PostgreSQL.
-    fecha_vencimiento: Mapped[date | None] = mapped_column(
-        Date, Computed(f"fecha_pago + {DIAS_MENSUALIDAD}", persisted=True)
-    )
+    fecha_vencimiento: Mapped[date | None] = mapped_column(Date, nullable=True)
 
     cliente: Mapped[Cliente | None] = relationship(back_populates="vehiculos")
 
@@ -119,6 +124,27 @@ class Vehiculo(Base):
         if type(value) is not int or not 1 <= value <= 9999:
             raise ValueError("modelo debe ser un año entero entre 1 y 9999.")
         return value
+
+    @validates("fecha_pago")
+    def validate_fecha_pago(self, key: str, value: date | None) -> date | None:
+        """Al registrar el vehículo con su fecha de pago no hay corte anterior: es el primer pago (RN-08).
+
+        Si el vehículo ya tiene vencimiento, cambiar la fecha de pago no lo recalcula: así una edición
+        del vehículo no borra los días que sumaron los pagos. Los pagos usan aplicar_pago.
+        """
+        if value is not None and self.fecha_vencimiento is None:
+            self.fecha_vencimiento = calcular_vencimiento(None, value)
+        return value
+
+    def aplicar_pago(self, fecha_pago: date) -> date:
+        """Habilita la mensualidad con un pago (RF-02, RF-04): el nuevo vencimiento cuenta desde el corte.
+
+        Devuelve el nuevo vencimiento. El servicio debe crear el Pago y gestionar flush y commit.
+        """
+        nuevo = calcular_vencimiento(self.fecha_vencimiento, fecha_pago)
+        self.fecha_pago = fecha_pago
+        self.fecha_vencimiento = nuevo
+        return nuevo
 
 
 class Celda(Base):
@@ -382,3 +408,54 @@ class Auditoria(Base):
     motivo: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
+class Pago(Base):
+    """Pago de la mensualidad de un vehículo, registrado en la plataforma sin pasarela (iteración 3, RF-01).
+
+    Nunca se edita ni se borra. Guarda la fecha de corte anterior y el vencimiento que produjo, para
+    que se pueda explicar cada cálculo (RF-02), y el usuario que lo registró (RNF-03).
+    """
+    __tablename__ = "pago"
+    __table_args__ = (
+        CheckConstraint("valor > 0", name="ck_pago_valor_positivo"),
+        CheckConstraint("medio IN ('BANCO', 'EFECTIVO', 'QR')", name="ck_pago_medio"),
+        # RF-02: 30 días desde el corte; en el primer pago, desde la fecha de pago (RN-08).
+        CheckConstraint(f"vencimiento_nuevo = COALESCE(vencimiento_anterior, fecha_pago) + {DIAS_MENSUALIDAD}",
+                        name="ck_pago_vencimiento_30_dias"),
+        Index("ix_pago_vehiculo", "vehiculo_id", "registrado_en"),
+        Index("ix_pago_cliente", "cliente_id"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    vehiculo_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("vehiculo.id", name="fk_pago_vehiculo", ondelete="RESTRICT"), nullable=False
+    )
+    # Cliente (cédula) que presentó el pago: el dueño del vehículo en ese momento (RN-05).
+    cliente_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("cliente.id", name="fk_pago_cliente", ondelete="RESTRICT"), nullable=False
+    )
+    fecha_pago: Mapped[date] = mapped_column(Date, nullable=False)
+    valor: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    medio: Mapped[str] = mapped_column(Text, nullable=False)
+    vencimiento_anterior: Mapped[date | None] = mapped_column(Date, nullable=True)
+    vencimiento_nuevo: Mapped[date] = mapped_column(Date, nullable=False)
+    operador_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("operador.id", name="fk_pago_operador", ondelete="RESTRICT"), nullable=False
+    )
+    registrado_en: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(),
+                                                    nullable=False)
+
+    vehiculo: Mapped[Vehiculo] = relationship()
+    cliente: Mapped[Cliente] = relationship()
+    operador: Mapped[Operador] = relationship()
+
+    @validates("medio")
+    def validate_medio(self, key: str, value: str) -> str:
+        if value not in MEDIOS_PAGO:
+            raise ValueError("medio debe ser BANCO, EFECTIVO o QR.")
+        return value
+
+    @validates("valor")
+    def validate_valor(self, key: str, value: Decimal | int) -> Decimal:
+        if isinstance(value, bool) or not isinstance(value, (Decimal, int)) or value <= 0:
+            raise ValueError("El valor del pago debe ser mayor que cero.")
+        return Decimal(value)
