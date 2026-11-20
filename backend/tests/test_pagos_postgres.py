@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_engine
 from app.main import app
-from app.models import Auditoria, Cliente, Operador, Pago, Vehiculo
+from app.models import Auditoria, Cliente, Estancia, Novedad, Operador, Pago, Vehiculo
 from app.services.mensualidad import hoy_colombia
 from conftest import actor_por_cabecera, borrar_auditoria_de_pruebas, cabecera
 
@@ -77,6 +77,10 @@ def datos():
     finally:
         ids = list(data['id'].values())
         with Session(engine) as s, s.begin():
+            # Los ingresos creados por las pruebas referencian vehículo y operador (RESTRICT): se borran primero.
+            estancias = select(Estancia.id).where(Estancia.vehiculo_id.in_(ids))
+            s.execute(delete(Novedad).where(Novedad.estancia_id.in_(estancias)))
+            s.execute(delete(Estancia).where(Estancia.vehiculo_id.in_(ids)))
             s.execute(delete(Pago).where(Pago.vehiculo_id.in_(ids)))
             s.execute(delete(Vehiculo).where(Vehiculo.id.in_(ids)))
             s.execute(delete(Cliente).where(Cliente.id.in_(data['clientes'])))
@@ -201,3 +205,23 @@ def test_dos_pagos_seguidos_suman_30_dias_cada_uno(datos):
     r = pagar(datos, 'vencido')
     assert r.status_code == 201
     assert r.json()['vencimiento_nuevo'] == (corte + timedelta(days=60)).isoformat()
+
+
+# ---------- RF-04: el pago habilita el ingreso ----------
+
+def test_vehiculo_vencido_entra_despues_de_pagar(datos):
+    api, headers, placa_vencida = datos['api'], datos['headers'], datos['placa']['vencido']
+    antes = api.post('/estancias/entrada', json={'placa': placa_vencida}, headers=headers)
+    assert antes.status_code == 409
+    assert 'Mensualidad vencida' in antes.json()['detail']
+
+    pago = pagar(datos, 'vencido')
+    assert pago.status_code == 201, pago.text
+    assert pago.json()['mensualidad']['estado'] == 'VIGENTE'
+
+    consulta = api.get(f'/estancias/vehiculo/{placa_vencida}', headers=headers).json()
+    assert consulta['mensualidad']['estado'] == 'VIGENTE' and consulta['puede_ingresar']
+
+    despues = api.post('/estancias/entrada', json={'placa': placa_vencida}, headers=headers)
+    assert despues.status_code == 201, despues.text
+    assert despues.json()['placa'] == placa_vencida and despues.json()['abierta']

@@ -4,6 +4,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { AbstractControl, FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { Cliente, ClienteDetalle, TIPOS_DOCUMENTO, TipoDocumento } from '../models/cliente';
+import { MEDIOS_PAGO, MedioPago } from '../models/pago';
 import {
   MENSAJE_PLACA,
   NOMBRE_TIPO,
@@ -13,6 +14,7 @@ import {
   normalizarPlaca,
 } from '../models/vehiculo';
 import { ApiService } from '../services/api.service';
+import { valorValido } from '../pagos/pagos';
 import { ClientesService } from '../services/clientes.service';
 import {
   NOMBRE_MENSUALIDAD,
@@ -37,6 +39,8 @@ const CORREO = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 export class Clientes {
   readonly tiposDocumento = TIPOS_DOCUMENTO;
   readonly tiposVehiculo = TIPOS_VEHICULO;
+  readonly medios = MEDIOS_PAGO;
+  readonly hoy = hoyColombia();
   readonly mensajePlaca = MENSAJE_PLACA;
   readonly nombreTipo = NOMBRE_TIPO;
   readonly nombreMensualidad = NOMBRE_MENSUALIDAD;
@@ -77,6 +81,9 @@ export class Clientes {
     ],
     color: ['', noVacio],
     fecha_pago: [hoyColombia(), Validators.required],
+    // RF-04: el primer pago del vehículo lleva valor y medio, igual que cualquier pago.
+    valor: ['', [noVacio, valorValido]],
+    medio: this.fb.nonNullable.control<MedioPago | ''>('', Validators.required),
   });
 
   constructor() {
@@ -168,7 +175,14 @@ export class Clientes {
     this.guardando.set(true);
     this.error.set('');
     this.vehiculosApi
-      .create({ ...raw, placa, modelo: Number(raw.modelo), cliente_id: ficha.id })
+      .create({
+        ...raw,
+        placa,
+        modelo: Number(raw.modelo),
+        valor: raw.valor.trim(),
+        medio: raw.medio as MedioPago,
+        cliente_id: ficha.id,
+      })
       .pipe(takeUntilDestroyed(this.destroy))
       .subscribe({
         next: (v) => {
@@ -176,7 +190,7 @@ export class Clientes {
           this.placaPendiente.set(null);
           this.abrir(
             ficha.id,
-            `Vehículo ${v.placa} registrado. Mensualidad vence el ${fechaDia(v.fecha_vencimiento)}.`,
+            `Vehículo ${v.placa} registrado con su primer pago. Mensualidad vigente hasta el ${fechaDia(v.fecha_vencimiento)}.`,
           );
         },
         error: (error: HttpErrorResponse) => {

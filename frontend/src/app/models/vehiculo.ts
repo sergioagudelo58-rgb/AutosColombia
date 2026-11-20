@@ -1,3 +1,5 @@
+import type { MedioPago } from './pago';
+
 export const TIPOS_VEHICULO = ['CARRO', 'CAMIONETA', 'MOTO'] as const;
 export type TipoVehiculo = (typeof TIPOS_VEHICULO)[number];
 export const NOMBRE_TIPO: Record<string, string> = {
@@ -5,7 +7,7 @@ export const NOMBRE_TIPO: Record<string, string> = {
   CAMIONETA: 'Camioneta',
   MOTO: 'Moto',
 };
-/** RF-02: todo vehículo pertenece a un cliente y trae la fecha de pago de su mensualidad. */
+/** RF-02 y RF-04: todo vehículo pertenece a un cliente y trae su primer pago (fecha, valor y medio). */
 export interface VehiculoCrear {
   placa: string;
   color: string;
@@ -15,8 +17,11 @@ export interface VehiculoCrear {
   tipo: TipoVehiculo;
   cliente_id: number;
   fecha_pago: string;
+  valor: string;
+  medio: MedioPago;
 }
-export type VehiculoActualizar = Partial<VehiculoCrear>;
+/** RF-04: la fecha de pago y el pago no se editan en el vehículo; la mensualidad cambia solo con un pago. */
+export type VehiculoActualizar = Partial<Omit<VehiculoCrear, 'fecha_pago' | 'valor' | 'medio'>>;
 /** Los vehículos anteriores a esta iteración pueden no tener cliente, línea ni pago. */
 export interface Vehiculo {
   id: number;

@@ -1,5 +1,6 @@
 import re
 from datetime import date
+from decimal import Decimal
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, field_validator
@@ -32,8 +33,16 @@ TipoVehiculo = Annotated[
 ]
 
 
+MedioPago = Literal["BANCO", "EFECTIVO", "QR"]
+# Igual que la columna pago.valor: NUMERIC(12, 2), mayor que cero (RNF-04).
+ValorPago = Annotated[Decimal, Field(gt=0, max_digits=12, decimal_places=2)]
+
+
 class VehiculoCrear(BaseModel):
-    """RF-02: todo vehículo nuevo pertenece a un cliente y trae su fecha de pago."""
+    """RF-02 y RF-04: todo vehículo nuevo pertenece a un cliente y trae su primer pago.
+
+    fecha_pago, valor y medio se guardan como el primer pago del vehículo (RN-08).
+    """
     model_config = ConfigDict(extra="forbid")
 
     placa: Placa
@@ -44,9 +53,12 @@ class VehiculoCrear(BaseModel):
     cliente_id: IdCliente
     linea: Texto
     fecha_pago: date
+    valor: ValorPago
+    medio: MedioPago
 
 
 class VehiculoActualizar(BaseModel):
+    """RF-04: fecha_pago ya no se edita aquí; la mensualidad solo cambia con un pago (POST /pagos)."""
     model_config = ConfigDict(extra="forbid")
 
     placa: Placa | None = None
@@ -56,7 +68,6 @@ class VehiculoActualizar(BaseModel):
     tipo: TipoVehiculo | None = None
     cliente_id: IdCliente | None = None
     linea: Texto | None = None
-    fecha_pago: date | None = None
 
     @field_validator("*", mode="before")
     @classmethod

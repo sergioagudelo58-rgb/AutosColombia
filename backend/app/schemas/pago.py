@@ -1,17 +1,13 @@
 """Contratos de la gestión de pagos (iteración 3: RF-01 y RF-03)."""
 from datetime import date, datetime, timezone
 from decimal import Decimal
-from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, field_validator
 
 from app.schemas.cliente import ClienteRespuesta, Documento
-from app.schemas.vehiculo import Placa, VehiculoRespuesta
+# MedioPago y ValorPago viven en schemas.vehiculo: el vehículo nuevo guarda su primer pago (RF-04).
+from app.schemas.vehiculo import MedioPago, Placa, ValorPago, VehiculoRespuesta
 from app.services.mensualidad import Mensualidad
-
-MedioPago = Literal["BANCO", "EFECTIVO", "QR"]
-# Igual que la columna pago.valor: NUMERIC(12, 2), mayor que cero (RNF-04).
-ValorPago = Annotated[Decimal, Field(gt=0, max_digits=12, decimal_places=2)]
 
 
 class PagoCrear(BaseModel):

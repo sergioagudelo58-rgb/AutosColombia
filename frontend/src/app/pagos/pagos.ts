@@ -28,7 +28,7 @@ const cedulaValida: ValidatorFn = (c) =>
     : { cedula: true };
 
 /** Valor en pesos mayor que cero, con máximo dos decimales. */
-const valorValido: ValidatorFn = (c) => {
+export const valorValido: ValidatorFn = (c) => {
   const texto = String(c.value ?? '').trim();
   if (!texto) return null;
   return /^\d{1,10}(\.\d{1,2})?$/.test(texto) && Number(texto) > 0 ? null : { valor: true };

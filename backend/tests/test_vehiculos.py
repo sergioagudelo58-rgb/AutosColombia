@@ -57,7 +57,7 @@ def test_delete_foreign_key_conflict_rolls_back_without_related_deletes():
 ])
 def test_placa_colombiana_se_normaliza(entrada, esperado):
     datos = {"color": "Azul", "modelo": 2025, "marca": "Marca", "tipo": "MOTO", "cliente_id": 1,
-             "linea": "NMax", "fecha_pago": "2026-10-05"}
+             "linea": "NMax", "fecha_pago": "2026-10-05", "valor": "120000", "medio": "EFECTIVO"}
     assert VehiculoCrear(placa=entrada, **datos).placa == esperado
     assert VehiculoActualizar(placa=entrada).placa == esperado
 
@@ -67,8 +67,36 @@ def test_placa_colombiana_se_normaliza(entrada, esperado):
 ])
 def test_placa_no_colombiana_es_rechazada(placa):
     datos = {"color": "Azul", "modelo": 2025, "marca": "Marca", "tipo": "MOTO", "cliente_id": 1,
-             "linea": "NMax", "fecha_pago": "2026-10-05"}
+             "linea": "NMax", "fecha_pago": "2026-10-05", "valor": "120000", "medio": "EFECTIVO"}
     with pytest.raises(ValidationError):
         VehiculoCrear(placa=placa, **datos)
     with pytest.raises(ValidationError):
         VehiculoActualizar(placa=placa)
+
+
+# ---------- RF-04: el vehículo nuevo guarda su primer pago; la fecha de pago ya no se edita ----------
+
+DATOS_VEHICULO = {"placa": "KDT482", "color": "Gris", "modelo": 2021, "marca": "Mazda", "tipo": "CARRO",
+                  "cliente_id": 1, "linea": "3", "fecha_pago": "2026-10-05", "valor": "120000",
+                  "medio": "EFECTIVO"}
+
+
+@pytest.mark.parametrize("campo", ["fecha_pago", "valor", "medio"])
+def test_creacion_exige_los_datos_del_primer_pago(campo):
+    VehiculoCrear(**DATOS_VEHICULO)
+    with pytest.raises(ValidationError):
+        VehiculoCrear(**{k: v for k, v in DATOS_VEHICULO.items() if k != campo})
+
+
+@pytest.mark.parametrize("cambio", [{"valor": "0"}, {"valor": "-5000"}, {"valor": "12.345"}, {"valor": None},
+                                    {"medio": "TARJETA"}, {"medio": None}])
+def test_creacion_rechaza_primer_pago_invalido(cambio):
+    with pytest.raises(ValidationError):
+        VehiculoCrear(**{**DATOS_VEHICULO, **cambio})
+
+
+@pytest.mark.parametrize("campo, valor", [("fecha_pago", "2026-10-05"), ("fecha_vencimiento", "2026-12-01"),
+                                          ("valor", "1000"), ("medio", "QR")])
+def test_actualizar_no_edita_la_mensualidad_ni_el_pago(campo, valor):
+    with pytest.raises(ValidationError):
+        VehiculoActualizar(**{campo: valor})

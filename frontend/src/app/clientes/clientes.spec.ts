@@ -68,6 +68,8 @@ describe('Clientes y vehículos', () => {
       modelo: 2021,
       color: 'Gris',
       fecha_pago: '2026-10-05',
+      valor: '120000',
+      medio: 'EFECTIVO',
     });
     c.guardarVehiculo();
     const vehiculo = http.expectOne('/vehiculos');
@@ -79,6 +81,8 @@ describe('Clientes y vehículos', () => {
       modelo: 2021,
       color: 'Gris',
       fecha_pago: '2026-10-05',
+      valor: '120000',
+      medio: 'EFECTIVO',
       cliente_id: 7,
     });
     vehiculo.flush({ id: 1, placa: 'KDT482', fecha_vencimiento: '2026-11-04' });
@@ -113,6 +117,24 @@ describe('Clientes y vehículos', () => {
     const { http, c } = crear('abc123');
     expect(c.placaPendiente()).toBe('ABC123');
     expect(c.creando()).toBe(true);
+    http.verify();
+  });
+
+  it('no registra el vehículo sin el valor y el medio del primer pago (RF-04)', () => {
+    const { http, c } = crear();
+    c.ficha.set(ficha as never);
+    c.agregarVehiculo();
+    c.vehiculo.patchValue({
+      placa: 'KDT482',
+      marca: 'Mazda',
+      linea: 'Mazda 3',
+      color: 'Gris',
+      fecha_pago: '2026-10-05',
+    });
+    c.guardarVehiculo();
+    http.expectNone('/vehiculos');
+    expect(c.vehiculo.controls.valor.invalid).toBe(true);
+    expect(c.vehiculo.controls.medio.invalid).toBe(true);
     http.verify();
   });
 });

@@ -5,9 +5,12 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.auditoria import Actor
-from app.models import Vehiculo
+from app.models import Pago, Vehiculo
 from app.services.auditoria import registrar as auditar
+from app.services.mensualidad import hoy_colombia
 from app.schemas.vehiculo import VehiculoActualizar, VehiculoCrear
+
+FECHA_FUTURA = "La fecha de pago no puede ser posterior a hoy."
 
 
 class VehiculoError(Exception):
@@ -50,11 +53,27 @@ def find_vehicle(session: Session, vehicle_id: int) -> Vehiculo:
 
 @database_operation
 def create_vehicle(session: Session, data: VehiculoCrear, actor: Actor) -> Vehiculo:
-    vehicle = Vehiculo(**data.model_dump())
+    """Registra el vehículo y su primer pago en una sola transacción (RF-04, RN-08)."""
+    if data.fecha_pago > hoy_colombia():
+        raise VehiculoError(422, FECHA_FUTURA)
+    datos_vehiculo = data.model_dump(exclude={"valor", "medio"})
+    vehicle = Vehiculo(**datos_vehiculo)
     session.add(vehicle)
     session.flush()
     auditar(session, accion="VEHICULO_CREADO", entidad="vehiculo", entidad_id=vehicle.id, placa=vehicle.placa,
-            actor=actor, nuevo=data.model_dump())
+            actor=actor, nuevo=datos_vehiculo)
+    # El modelo ya calculó el vencimiento (fecha de pago + 30 días, sin corte anterior): el primer pago lo guarda.
+    pago = Pago(vehiculo_id=vehicle.id, cliente_id=vehicle.cliente_id, fecha_pago=data.fecha_pago,
+                valor=data.valor, medio=data.medio, vencimiento_anterior=None,
+                vencimiento_nuevo=vehicle.fecha_vencimiento, operador_id=actor.id)
+    session.add(pago)
+    session.flush()
+    auditar(session, accion="PAGO_REGISTRADO", entidad="pago", entidad_id=pago.id, placa=vehicle.placa,
+            actor=actor,
+            nuevo={"fecha_pago": data.fecha_pago, "valor": str(data.valor), "medio": data.medio,
+                   "fecha_vencimiento": vehicle.fecha_vencimiento},
+            detalle=f"Primer pago de {vehicle.placa} al registrar el vehículo; "
+                    f"mensualidad hasta {vehicle.fecha_vencimiento.strftime('%d/%m/%Y')}.")
     session.commit()
     session.refresh(vehicle)
     return vehicle

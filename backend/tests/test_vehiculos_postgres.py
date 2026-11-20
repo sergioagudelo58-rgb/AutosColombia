@@ -5,12 +5,12 @@ from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import select, text
+from sqlalchemy import delete, select, text
 from sqlalchemy.orm import Session
 
 from app.database import get_engine, get_session
 from app.main import app
-from app.models import Auditoria
+from app.models import Auditoria, Operador, Pago
 from conftest import ADMIN_PRUEBA, como
 
 pytestmark = pytest.mark.skipif(
@@ -27,12 +27,20 @@ def client():
             assert connection.scalar(text("SELECT current_database()")) == "autos_colombia"
             assert connection.scalar(text("SELECT version_num FROM alembic_version")) in {"0008"}
             with Session(bind=connection, join_transaction_mode="create_savepoint") as session:
+                # RF-04: el primer pago guarda al usuario que lo registra; ese usuario debe existir en operador.
+                operador = Operador(nombre="Prueba vehiculos", telefono=f"3{int(uuid4().hex[:8], 16) % 10**9:09d}",
+                                    usuario=f"prueba{uuid4().hex[:10]}")
+                session.add(operador)
+                session.flush()
+                actor = ADMIN_PRUEBA.__class__(**{**ADMIN_PRUEBA.__dict__, "id": operador.id})
+
                 def override_session():
                     yield session
                 app.dependency_overrides[get_session] = override_session
                 try:
-                    with como(ADMIN_PRUEBA), TestClient(app) as api:
+                    with como(actor), TestClient(app) as api:
                         api.session = session
+                        api.operador_id = operador.id
                         yield api
                 finally:
                     app.dependency_overrides.pop(get_session, None)
@@ -48,10 +56,10 @@ def test_crud_and_errors_in_postgres(client):
     assert owner.status_code == 201
     payload = {"placa": f" {letters.lower()}-111 ", "color": "Azul", "modelo": 2025,
                "marca": "Prueba", "tipo": "CARRO", "cliente_id": owner.json()["id"], "linea": "Linea",
-               "fecha_pago": "2026-10-05"}
+               "fecha_pago": "2026-10-05", "valor": "120000", "medio": "EFECTIVO"}
     # RF-02: el vehículo exige cliente existente, línea y fecha de pago.
     assert client.post("/vehiculos", json={**payload, "cliente_id": 9223372036854775807}).status_code == 404
-    for missing in ("cliente_id", "linea", "fecha_pago"):
+    for missing in ("cliente_id", "linea", "fecha_pago", "valor", "medio"):
         assert client.post("/vehiculos", json={k: v for k, v in payload.items() if k != missing}).status_code == 422
     created = client.post("/vehiculos", json=payload)
     assert created.status_code == 201
@@ -60,6 +68,14 @@ def test_crud_and_errors_in_postgres(client):
     assert vehicle["placa"] == f"{letters}111"
     assert vehicle["modelo"] == 2025
     assert vehicle["fecha_vencimiento"] == "2026-11-04"
+    # RF-04: el registro del vehículo guarda su primer pago, contado desde la fecha de pago.
+    primer_pago = client.session.scalars(select(Pago).where(Pago.vehiculo_id == first_id)).one()
+    assert primer_pago.vencimiento_anterior is None
+    assert primer_pago.vencimiento_nuevo.isoformat() == "2026-11-04"
+    assert int(primer_pago.valor) == 120000 and primer_pago.medio == "EFECTIVO"
+    assert primer_pago.cliente_id == owner.json()["id"] and primer_pago.operador_id == client.operador_id
+    for invalido in ({"valor": "0"}, {"valor": "-5"}, {"medio": "TARJETA"}, {"fecha_pago": "2999-01-01"}):
+        assert client.post("/vehiculos", json={**payload, "placa": f"{letters}999", **invalido}).status_code == 422
     assert client.get(f"/clientes/{owner.json()['id']}").json()["vehiculos"][0]["id"] == vehicle["id"]
     assert client.get(f"/vehiculos/{first_id}").json() == vehicle
     assert client.post("/vehiculos", json=payload).status_code == 409
@@ -83,13 +99,17 @@ def test_crud_and_errors_in_postgres(client):
     assert patched.json()["placa"] == f"{letters}333"
     assert patched.json()["marca"] == "Prueba"
     for invalid in ({"color": None}, {"id": first_id}, {"placa": " "}, {"placa": "AAAAA"}, {"placa": "ABC-12"}, {"placa": "1234AB"}, {"tipo": "BUS"}, {"tipo": "AUTOMOVIL"},
-                    {"modelo": 0}, {"modelo": True}, {"modelo": "2025"}, {"marca": "\t"}):
+                    {"modelo": 0}, {"modelo": True}, {"modelo": "2025"}, {"marca": "\t"},
+                    {"fecha_pago": "2026-10-05"}, {"fecha_vencimiento": "2030-01-01"}):
         assert client.patch(f"/vehiculos/{first_id}", json=invalid).status_code == 422
     assert client.post("/vehiculos", json={}).status_code == 422
     assert client.post("/vehiculos", json={**payload, "color": None}).status_code == 422
     for query in ("limit=0", "limit=101", "offset=-1"):
         assert client.get(f"/vehiculos?{query}").status_code == 422
     assert client.get("/vehiculos/0").status_code == 422
+    # Los pagos son historial inmutable: un vehículo con pagos no se elimina (conflicto, no error del servidor).
+    assert client.delete(f"/vehiculos/{first_id}").status_code == 409
+    client.session.execute(delete(Pago).where(Pago.vehiculo_id.in_([first_id, second_id])))
     deleted = client.delete(f"/vehiculos/{first_id}")
     assert deleted.status_code == 204 and deleted.content == b""
     assert client.get(f"/vehiculos/{first_id}").status_code == 404

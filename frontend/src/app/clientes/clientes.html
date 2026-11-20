@@ -211,8 +211,42 @@
                 </div>
                 <div class="field">
                   <label for="fecha_pago">Fecha de pago de la mensualidad</label>
-                  <input id="fecha_pago" type="date" formControlName="fecha_pago" />
-                  <span class="hint">Vence 30 días después.</span>
+                  <input id="fecha_pago" type="date" formControlName="fecha_pago" [max]="hoy" />
+                  <span class="hint">Primer pago: vence 30 días después.</span>
+                </div>
+                <div class="field">
+                  <label for="valor">Valor del primer pago (pesos)</label>
+                  <input
+                    id="valor"
+                    formControlName="valor"
+                    inputmode="decimal"
+                    autocomplete="off"
+                    placeholder="120000"
+                    [attr.aria-invalid]="invalido('vehiculo', 'valor')"
+                  />
+                  <span class="field-error">
+                    @if (invalido('vehiculo', 'valor')) {
+                      Digita un valor mayor que cero, sin puntos (ejemplo: 120000).
+                    }
+                  </span>
+                </div>
+                <div class="field">
+                  <label for="medio">Medio de pago</label>
+                  <select
+                    id="medio"
+                    formControlName="medio"
+                    [attr.aria-invalid]="invalido('vehiculo', 'medio')"
+                  >
+                    <option value="" disabled>Elige cómo pagó…</option>
+                    @for (m of medios; track m.valor) {
+                      <option [value]="m.valor">{{ m.nombre }}</option>
+                    }
+                  </select>
+                  <span class="field-error">
+                    @if (invalido('vehiculo', 'medio')) {
+                      Elige cómo pagó el cliente.
+                    }
+                  </span>
                 </div>
               </div>
               <div class="actions">
