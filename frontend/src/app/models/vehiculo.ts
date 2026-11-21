@@ -7,6 +7,16 @@ export const NOMBRE_TIPO: Record<string, string> = {
   CAMIONETA: 'Camioneta',
   MOTO: 'Moto',
 };
+/** RN-12: tarifa de la mensualidad por tipo de vehículo (pesos). El servidor la vuelve a validar. */
+export const TARIFA_MENSUALIDAD: Record<TipoVehiculo, number> = {
+  CARRO: 250000,
+  CAMIONETA: 250000,
+  MOTO: 100000,
+};
+/** Valor que se autollena en «Valor» según el tipo; vacío si el tipo no tiene tarifa. */
+export function tarifaMensualidad(tipo: string): string {
+  return tipo in TARIFA_MENSUALIDAD ? String(TARIFA_MENSUALIDAD[tipo as TipoVehiculo]) : '';
+}
 /** RF-02 y RF-04: todo vehículo pertenece a un cliente y trae su primer pago (fecha, valor y medio). */
 export interface VehiculoCrear {
   placa: string;

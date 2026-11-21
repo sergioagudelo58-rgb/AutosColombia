@@ -9,6 +9,7 @@ from app.models import Pago, Vehiculo
 from app.services.auditoria import registrar as auditar
 from app.services.mensualidad import hoy_colombia
 from app.schemas.vehiculo import VehiculoActualizar, VehiculoCrear
+from app.tarifas import mensaje_tarifa, valor_corresponde
 
 FECHA_FUTURA = "La fecha de pago no puede ser posterior a hoy."
 
@@ -56,6 +57,9 @@ def create_vehicle(session: Session, data: VehiculoCrear, actor: Actor) -> Vehic
     """Registra el vehículo y su primer pago en una sola transacción (RF-04, RN-08)."""
     if data.fecha_pago > hoy_colombia():
         raise VehiculoError(422, FECHA_FUTURA)
+    # RN-12: el primer pago debe valer la tarifa del tipo de vehículo; si no coincide, no se guarda nada.
+    if not valor_corresponde(data.tipo, data.valor):
+        raise VehiculoError(422, mensaje_tarifa(data.tipo))
     datos_vehiculo = data.model_dump(exclude={"valor", "medio"})
     vehicle = Vehiculo(**datos_vehiculo)
     session.add(vehicle)

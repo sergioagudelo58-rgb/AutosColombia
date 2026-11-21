@@ -18,6 +18,7 @@ from app.schemas.pago import ConsultaPago, PagoCrear, PagoRespuesta
 from app.schemas.vehiculo import VehiculoRespuesta
 from app.services.auditoria import registrar as auditar
 from app.services.mensualidad import evaluar_mensualidad, hoy_colombia
+from app.tarifas import mensaje_tarifa, valor_corresponde
 
 # Notificaciones del documento (RF-01, HU-01).
 CLIENTE_NO_REGISTRADO = "El cliente no está registrado."
@@ -82,6 +83,9 @@ class ServicioPago:
         if data.fecha_pago > hoy_colombia():
             raise ApiError(422, FECHA_FUTURA)
         cliente, vehiculo = self._cliente_y_vehiculo(data.cedula, data.placa, bloquear=True)
+        # RN-12: el valor debe ser la tarifa del tipo de vehículo; si no coincide, no se guarda nada.
+        if not valor_corresponde(vehiculo.tipo, data.valor):
+            raise ApiError(422, mensaje_tarifa(vehiculo.tipo))
 
         vencimiento_anterior = vehiculo.fecha_vencimiento
         vencimiento_nuevo = vehiculo.aplicar_pago(data.fecha_pago)  # RF-02 (Sergio): 30 días desde el corte.

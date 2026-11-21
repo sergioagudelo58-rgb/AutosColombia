@@ -1,6 +1,7 @@
 """Pruebas optativas en autos_colombia: sin DDL y rollback de todos los registros."""
 
 import os
+from decimal import Decimal
 from uuid import uuid4
 
 import pytest
@@ -10,7 +11,8 @@ from sqlalchemy.orm import Session
 
 from app.database import get_engine, get_session
 from app.main import app
-from app.models import Auditoria, Operador, Pago
+from app.models import Auditoria, Operador, Pago, Vehiculo
+from app.tarifas import MENSAJE_CARRO_CAMIONETA, MENSAJE_MOTO
 from conftest import ADMIN_PRUEBA, como
 
 pytestmark = pytest.mark.skipif(
@@ -56,7 +58,7 @@ def test_crud_and_errors_in_postgres(client):
     assert owner.status_code == 201
     payload = {"placa": f" {letters.lower()}-111 ", "color": "Azul", "modelo": 2025,
                "marca": "Prueba", "tipo": "CARRO", "cliente_id": owner.json()["id"], "linea": "Linea",
-               "fecha_pago": "2026-10-05", "valor": "120000", "medio": "EFECTIVO"}
+               "fecha_pago": "2026-10-05", "valor": "250000", "medio": "EFECTIVO"}
     # RF-02: el vehículo exige cliente existente, línea y fecha de pago.
     assert client.post("/vehiculos", json={**payload, "cliente_id": 9223372036854775807}).status_code == 404
     for missing in ("cliente_id", "linea", "fecha_pago", "valor", "medio"):
@@ -72,7 +74,7 @@ def test_crud_and_errors_in_postgres(client):
     primer_pago = client.session.scalars(select(Pago).where(Pago.vehiculo_id == first_id)).one()
     assert primer_pago.vencimiento_anterior is None
     assert primer_pago.vencimiento_nuevo.isoformat() == "2026-11-04"
-    assert int(primer_pago.valor) == 120000 and primer_pago.medio == "EFECTIVO"
+    assert int(primer_pago.valor) == 250000 and primer_pago.medio == "EFECTIVO"
     assert primer_pago.cliente_id == owner.json()["id"] and primer_pago.operador_id == client.operador_id
     for invalido in ({"valor": "0"}, {"valor": "-5"}, {"medio": "TARJETA"}, {"fecha_pago": "2999-01-01"}):
         assert client.post("/vehiculos", json={**payload, "placa": f"{letters}999", **invalido}).status_code == 422
@@ -131,3 +133,34 @@ def test_operador_no_modifica_ni_borra_vehiculos_ni_clientes(client):
     denegados = client.session.scalars(select(Auditoria).where(Auditoria.usuario == "operador_x",
                                                                Auditoria.accion == "ACCESO_DENEGADO")).all()
     assert len(denegados) == 3
+
+
+@pytest.mark.parametrize("tipo, valor, mensaje", [
+    ("CARRO", "250000", None),                           # se acepta
+    ("CAMIONETA", "250000", None),                       # se acepta
+    ("MOTO", "100000", None),                            # se acepta
+    ("CARRO", "100000", MENSAJE_CARRO_CAMIONETA),        # se rechaza
+    ("MOTO", "250000", MENSAJE_MOTO),                    # se rechaza
+    ("CAMIONETA", "100000", MENSAJE_CARRO_CAMIONETA),    # se rechaza
+])
+def test_primer_pago_del_vehiculo_debe_ser_la_tarifa(client, tipo, valor, mensaje):
+    """RN-12: al registrar un vehículo nuevo, el valor de su primer pago es la tarifa de su tipo."""
+    letters = "".join(chr(65 + int(c, 16) % 26) for c in uuid4().hex[:3])
+    documento = str(int(uuid4().hex[:12], 16))[:12]
+    owner = client.post("/clientes", json={"tipo_documento": "CC", "numero_documento": documento, "nombres": "Ana",
+                                           "apellidos": "Prueba", "telefono": "3001112233"})
+    assert owner.status_code == 201
+    placa = f"{letters}555"
+    respuesta = client.post("/vehiculos", json={
+        "placa": placa, "color": "Azul", "modelo": 2025, "marca": "Prueba", "tipo": tipo,
+        "cliente_id": owner.json()["id"], "linea": "Linea", "fecha_pago": "2026-10-05", "valor": valor,
+        "medio": "EFECTIVO"})
+    if mensaje is None:
+        assert respuesta.status_code == 201, respuesta.text
+        pago = client.session.scalars(select(Pago).where(Pago.vehiculo_id == respuesta.json()["id"])).one()
+        assert pago.valor == Decimal(valor)
+    else:
+        assert respuesta.status_code == 422
+        assert mensaje in respuesta.text
+        # No se guarda ni el vehículo ni el pago.
+        assert client.session.scalar(select(Vehiculo).where(Vehiculo.placa == placa)) is None

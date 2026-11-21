@@ -221,12 +221,15 @@
                     formControlName="valor"
                     inputmode="decimal"
                     autocomplete="off"
-                    placeholder="120000"
+                    readonly
                     [attr.aria-invalid]="invalido('vehiculo', 'valor')"
                   />
+                  <span class="hint">
+                    Se llena según el tipo: $250.000 carro y camioneta, $100.000 moto.
+                  </span>
                   <span class="field-error">
                     @if (invalido('vehiculo', 'valor')) {
-                      Digita un valor mayor que cero, sin puntos (ejemplo: 120000).
+                      El valor debe corresponder a la tarifa del tipo de vehículo.
                     }
                   </span>
                 </div>

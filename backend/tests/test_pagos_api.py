@@ -6,7 +6,7 @@ from app.main import app
 
 pytestmark = pytest.mark.usefixtures('sesion_admin')
 
-VALIDO = {'cedula': '1036458221', 'placa': 'KDT482', 'fecha_pago': '2026-11-05', 'valor': '120000',
+VALIDO = {'cedula': '1036458221', 'placa': 'KDT482', 'fecha_pago': '2026-11-05', 'valor': '250000',
           'medio': 'EFECTIVO'}
 
 

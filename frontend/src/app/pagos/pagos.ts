@@ -4,7 +4,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormGroup, ReactiveFormsModule, ValidatorFn, Validators } from '@angular/forms';
 import { merge } from 'rxjs';
 import { ConsultaPago, MEDIOS_PAGO, MedioPago, PagoRespuesta } from '../models/pago';
-import { NOMBRE_TIPO, normalizarPlaca } from '../models/vehiculo';
+import { NOMBRE_TIPO, normalizarPlaca, tarifaMensualidad } from '../models/vehiculo';
 import { PagosService } from '../services/pagos.service';
 import {
   NOMBRE_MENSUALIDAD,
@@ -115,7 +115,12 @@ export class Pagos {
           this.buscando.set(false);
           if (version !== this.version) return;
           this.consulta.set(consulta);
-          this.pago.reset({ fecha_pago: hoyColombia(), valor: '', medio: '' });
+          // RN-12: el valor se llena solo con la tarifa del tipo de vehículo.
+          this.pago.reset({
+            fecha_pago: hoyColombia(),
+            valor: tarifaMensualidad(consulta.vehiculo.tipo),
+            medio: '',
+          });
         },
         error: (error: HttpErrorResponse) => {
           this.buscando.set(false);

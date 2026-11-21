@@ -2,6 +2,7 @@
 auditoría y fecha hasta la que va la mensualidad. El cálculo desde el corte (RF-02) se prueba en
 test_mensualidad.py; aquí se comprueba que el endpoint lo usa."""
 from datetime import timedelta
+from decimal import Decimal
 import os
 from uuid import uuid4
 
@@ -14,6 +15,7 @@ from app.database import get_engine
 from app.main import app
 from app.models import Auditoria, Cliente, Estancia, Novedad, Operador, Pago, Vehiculo
 from app.services.mensualidad import hoy_colombia
+from app.tarifas import MENSAJE_CARRO_CAMIONETA, MENSAJE_MOTO
 from conftest import actor_por_cabecera, borrar_auditoria_de_pruebas, cabecera
 
 pytestmark = pytest.mark.skipif(os.getenv('RUN_POSTGRES_TESTS') != '1', reason='Requiere PostgreSQL local.')
@@ -48,8 +50,8 @@ def datos():
         s.add_all(clientes)
         s.flush()
 
-        def vehiculo(cliente, pago):
-            return Vehiculo(placa=placa(), color='Gris', modelo=2021, marca='Mazda', linea='3', tipo='CARRO',
+        def vehiculo(cliente, pago, tipo='CARRO'):
+            return Vehiculo(placa=placa(), color='Gris', modelo=2021, marca='Mazda', linea='3', tipo=tipo,
                             cliente_id=cliente.id if cliente else None, fecha_pago=pago)
 
         vehiculos = {
@@ -61,6 +63,9 @@ def datos():
             'nuevo': vehiculo(clientes[0], None),
             'de_otro': vehiculo(clientes[1], hoy),
             'sin_cliente': vehiculo(None, None),
+            # RN-12: una camioneta y una moto del mismo cliente, para probar cada tarifa.
+            'camioneta': vehiculo(clientes[0], hoy - timedelta(days=34), 'CAMIONETA'),
+            'moto': vehiculo(clientes[0], hoy - timedelta(days=34), 'MOTO'),
         }
         operador = Operador(nombre='Prueba pagos', telefono=telefono(), usuario=f'prueba{uuid4().hex[:10]}')
         s.add_all(list(vehiculos.values()) + [operador])
@@ -90,7 +95,7 @@ def datos():
 
 def pagar(d, clave='vencido', **cambios):
     cuerpo = {'cedula': d['cedula'], 'placa': d['placa'][clave], 'fecha_pago': hoy_colombia().isoformat(),
-              'valor': '120000', 'medio': 'EFECTIVO', **cambios}
+              'valor': '250000', 'medio': 'EFECTIVO', **cambios}
     return d['api'].post('/pagos', json=cuerpo, headers=d['headers'])
 
 
@@ -180,7 +185,7 @@ def test_primer_pago_cuenta_desde_la_fecha_de_pago(datos):
 
 
 def test_pago_queda_con_usuario_de_la_sesion_y_en_auditoria(datos):
-    r = pagar(datos, 'vencido', valor='95000.50', medio='BANCO')
+    r = pagar(datos, 'vencido', medio='BANCO')
     assert r.status_code == 201, r.text
     pago_id = r.json()['id']
     assert r.json()['registrado_por'] == f"prueba{datos['operador']}"
@@ -188,7 +193,7 @@ def test_pago_queda_con_usuario_de_la_sesion_y_en_auditoria(datos):
         pago = s.get(Pago, pago_id)
         assert pago.operador_id == datos['operador']
         assert pago.cliente_id == datos['clientes'][0]
-        assert str(pago.valor) == '95000.50'
+        assert pago.valor == Decimal('250000')
         vehiculo = s.get(Vehiculo, datos['id']['vencido'])
         assert vehiculo.fecha_vencimiento == pago.vencimiento_nuevo
         assert vehiculo.fecha_pago == pago.fecha_pago
@@ -225,3 +230,28 @@ def test_vehiculo_vencido_entra_despues_de_pagar(datos):
     despues = api.post('/estancias/entrada', json={'placa': placa_vencida}, headers=headers)
     assert despues.status_code == 201, despues.text
     assert despues.json()['placa'] == placa_vencida and despues.json()['abierta']
+
+
+# ---------- RN-12: el valor del pago es la tarifa del tipo de vehículo ----------
+
+@pytest.mark.parametrize('clave, valor', [('vencido', '250000'), ('camioneta', '250000'), ('moto', '100000')])
+def test_pago_con_la_tarifa_se_acepta(datos, clave, valor):
+    r = pagar(datos, clave, valor=valor)
+    assert r.status_code == 201, r.text
+    assert Decimal(r.json()['valor']) == Decimal(valor)
+
+
+@pytest.mark.parametrize('clave, valor, mensaje', [
+    ('vencido', '100000', MENSAJE_CARRO_CAMIONETA),      # carro con la tarifa de moto
+    ('camioneta', '100000', MENSAJE_CARRO_CAMIONETA),    # camioneta con la tarifa de moto
+    ('moto', '250000', MENSAJE_MOTO),                    # moto con la tarifa de carro
+    ('vencido', '249999.99', MENSAJE_CARRO_CAMIONETA),   # cualquier valor distinto de la tarifa
+    ('moto', '100000.50', MENSAJE_MOTO),
+])
+def test_pago_con_valor_distinto_a_la_tarifa_se_rechaza(datos, clave, valor, mensaje):
+    r = pagar(datos, clave, valor=valor)
+    assert r.status_code == 422
+    assert r.json()['detail'] == mensaje
+    with Session(get_engine()) as s:
+        assert s.scalar(select(Pago).where(Pago.vehiculo_id == datos['id'][clave])) is None
+        assert s.get(Vehiculo, datos['id'][clave]).fecha_vencimiento == datos['vence'][clave]

@@ -12,6 +12,7 @@ import {
   TipoVehiculo,
   Vehiculo,
   normalizarPlaca,
+  tarifaMensualidad,
 } from '../models/vehiculo';
 import { ApiService } from '../services/api.service';
 import { valorValido } from '../pagos/pagos';
@@ -82,11 +83,15 @@ export class Clientes {
     color: ['', noVacio],
     fecha_pago: [hoyColombia(), Validators.required],
     // RF-04: el primer pago del vehículo lleva valor y medio, igual que cualquier pago.
-    valor: ['', [noVacio, valorValido]],
+    valor: [tarifaMensualidad('CARRO'), [noVacio, valorValido]],
     medio: this.fb.nonNullable.control<MedioPago | ''>('', Validators.required),
   });
 
   constructor() {
+    // RN-12: el valor del primer pago se llena solo con la tarifa del tipo de vehículo.
+    this.vehiculo.controls.tipo.valueChanges
+      .pipe(takeUntilDestroyed(this.destroy))
+      .subscribe((tipo) => this.vehiculo.controls.valor.setValue(tarifaMensualidad(tipo)));
     const placa = normalizarPlaca(inject(ActivatedRoute).snapshot.queryParamMap.get('placa') ?? '');
     if (placa) {
       this.placaPendiente.set(placa);
@@ -161,6 +166,7 @@ export class Clientes {
 
   agregarVehiculo(): void {
     this.vehiculo.reset();
+    this.vehiculo.controls.valor.setValue(tarifaMensualidad(this.vehiculo.controls.tipo.value));
     const placa = this.placaPendiente();
     if (placa) this.vehiculo.controls.placa.setValue(placa);
     this.agregandoVehiculo.set(true);
