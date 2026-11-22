@@ -36,6 +36,7 @@ describe('Menú por perfil (RF-02)', () => {
       '/gestion/usuarios',
       '/gestion/celdas',
       '/gestion/reportes',
+      '/gestion/auditoria',
     ]);
   });
 
