@@ -131,10 +131,16 @@ describe('Clientes y vehículos', () => {
       color: 'Gris',
       fecha_pago: '2026-10-05',
     });
+    // RN-12: el valor llega con la tarifa del tipo; el operario debe elegir el medio de pago.
+    expect(c.vehiculo.controls.valor.valid).toBe(true);
+    c.guardarVehiculo();
+    http.expectNone('/vehiculos');
+    expect(c.vehiculo.controls.medio.invalid).toBe(true);
+    // Si el operario borra el valor, tampoco se registra.
+    c.vehiculo.patchValue({ valor: '', medio: 'EFECTIVO' });
     c.guardarVehiculo();
     http.expectNone('/vehiculos');
     expect(c.vehiculo.controls.valor.invalid).toBe(true);
-    expect(c.vehiculo.controls.medio.invalid).toBe(true);
     http.verify();
   });
 });
